@@ -76,6 +76,38 @@ class OptimizationEngineTests(unittest.TestCase):
                 soc_steps=2.5,
             )
 
+    def test_grid_import_cap_reduces_peak_with_flexible_load(self):
+        result = optimize_schedule(
+            demand_kwh=[5],
+            solar_kwh=[0],
+            price_per_kwh=[10],
+            carbon_kg_per_kwh=[0],
+            critical_load_kwh=[2],
+            flexible_load_kwh=[3],
+            flexible_shed_penalty_per_kwh=0.1,
+            max_grid_import_kw=3,
+        )
+
+        step = result["schedule"][0]
+        self.assertEqual(step["flexible_load_shed_kwh"], 3)
+        self.assertEqual(result["metrics"]["estimated_peak_reduction_kw"], 3)
+        self.assertEqual(result["metrics"]["grid_import_limit_violations"], 0)
+
+    def test_infeasible_grid_import_cap_uses_safe_fallback(self):
+        result = optimize_schedule(
+            demand_kwh=[5],
+            solar_kwh=[0],
+            price_per_kwh=[1],
+            carbon_kg_per_kwh=[0],
+            critical_load_kwh=[5],
+            max_grid_import_kw=3,
+        )
+
+        self.assertEqual(result["mode"], "safe_fallback")
+        self.assertEqual(result["schedule"][0]["critical_load_kwh"], 5)
+        self.assertEqual(result["metrics"]["critical_load_violations"], 0)
+        self.assertEqual(result["metrics"]["grid_import_limit_violations"], 1)
+
     def test_critical_and_comfort_loads_are_protected(self):
         result = optimize_schedule(
             demand_kwh=[10],

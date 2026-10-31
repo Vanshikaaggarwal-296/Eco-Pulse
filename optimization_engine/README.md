@@ -64,6 +64,13 @@ interval's recommendation. It assumes the grid can supply remaining loads in
 normal operation; outage critical-load shortfalls are reported separately by
 `simulate_islanding`.
 
+To actively limit peak import, set `max_grid_import_kw`. The optimizer then
+chooses battery dispatch and safe HVAC/flexible-load reductions that fit that
+per-interval grid cap. If critical and comfort-protected loads make the cap
+impossible, it returns the no-action safe fallback and reports
+`grid_import_limit_violations`; it does not break protected-load constraints to
+force the cap.
+
 The result includes a schedule, estimated cost/carbon reductions, estimated
 peak demand in kW (and interval energy for compatibility), comfort and
 critical-load violation counts, and `requires_human_approval: true`. Cost

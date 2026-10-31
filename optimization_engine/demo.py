@@ -32,6 +32,7 @@ def main() -> None:
         carbon_weight=2.0,
         flexible_shed_penalty_per_kwh=20.0,
         hvac_reduction_penalty_per_kwh=20.0,
+        max_grid_import_kw=3.0,
         soc_steps=12,
     )
     outage = simulate_islanding(

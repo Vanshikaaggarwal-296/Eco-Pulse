@@ -161,6 +161,7 @@ def _step_options(
     next_soc: float,
     carbon_weight: float,
     step_hours: float,
+    max_grid_import_kw: float | None,
     flexible_shed_penalty_per_kwh: float,
     hvac_reduction_penalty_per_kwh: float,
 ) -> list[dict[str, float]]:
@@ -193,6 +194,12 @@ def _step_options(
                 continue
             battery_used = min(discharge_output, grid_for_load)
             grid_import = max(0.0, grid_for_load - battery_used + charge_from_grid)
+            grid_import_kw = grid_import / step_hours
+            if (
+                max_grid_import_kw is not None
+                and grid_import_kw > max_grid_import_kw + 1e-9
+            ):
+                continue
             weighted_energy_price = price[step] + carbon_weight * carbon[step]
             service_penalty = (
                 shed_flexible * flexible_shed_penalty_per_kwh
@@ -213,7 +220,7 @@ def _step_options(
                 {
                     "objective": objective,
                     "grid_import_kwh": grid_import,
-                    "grid_import_kw": grid_import / step_hours,
+                    "grid_import_kw": grid_import_kw,
                     "load_served_kwh": served_load,
                     "battery_soc_kwh": next_soc,
                     "battery_charge_from_grid_kwh": charge_from_grid,
@@ -240,6 +247,7 @@ def _schedule_metrics(
     carbon: list[float],
     schedule: list[dict[str, float]],
     step_hours: float,
+    max_grid_import_kw: float | None,
 ) -> dict[str, float | int | None]:
     baseline_import = [max(0.0, load - sun) for load, sun in zip(demand, solar)]
     optimized_import = [item["grid_import_kwh"] for item in schedule]
@@ -259,6 +267,11 @@ def _schedule_metrics(
     optimized_peak_kwh = max(optimized_import, default=0.0)
     comfort_violations = sum(
         item["hvac_served_kwh"] + 1e-9 < item["hvac_min_kwh"] for item in schedule
+    )
+    grid_import_limit_violations = (
+        sum(item["grid_import_kw"] > max_grid_import_kw + 1e-9 for item in schedule)
+        if max_grid_import_kw is not None
+        else 0
     )
     return {
         "baseline_cost": baseline_cost,
@@ -283,6 +296,8 @@ def _schedule_metrics(
         / step_hours,
         "comfort_violations": comfort_violations,
         "critical_load_violations": 0,
+        "max_grid_import_kw": max_grid_import_kw,
+        "grid_import_limit_violations": grid_import_limit_violations,
     }
 
 
@@ -300,6 +315,7 @@ def optimize_schedule(
     carbon_weight: float = 0.0,
     flexible_shed_penalty_per_kwh: float = 1.0,
     hvac_reduction_penalty_per_kwh: float = 5.0,
+    max_grid_import_kw: float | None = None,
     step_hours: float = 1.0,
     soc_steps: int = 20,
 ) -> dict:
@@ -312,6 +328,10 @@ def optimize_schedule(
     curtailed in the current interval using a service penalty; this prototype
     does not reschedule curtailed energy into a later interval.
 
+    ``max_grid_import_kw``, when supplied, is a hard grid-import cap for each
+    interval. If the protected loads cannot fit under it, a conservative
+    no-action fallback is returned and the metrics report cap violations.
+
     The returned schedule is advice for a human or downstream controller. It
     never switches equipment automatically. ``carbon_weight`` expresses the
     team's chosen value of a kilogram of CO2e in the same units as energy price.
@@ -320,6 +340,10 @@ def optimize_schedule(
         raise ValueError("step_hours must be a positive finite number")
     if not isfinite(carbon_weight) or carbon_weight < 0:
         raise ValueError("carbon_weight must be a non-negative finite number")
+    if max_grid_import_kw is not None and (
+        not isfinite(max_grid_import_kw) or max_grid_import_kw < 0
+    ):
+        raise ValueError("max_grid_import_kw must be a non-negative finite number")
     if (
         not isfinite(flexible_shed_penalty_per_kwh)
         or flexible_shed_penalty_per_kwh < 0
@@ -373,6 +397,7 @@ def optimize_schedule(
                     next_soc,
                     carbon_weight,
                     step_hours,
+                    max_grid_import_kw,
                     flexible_shed_penalty_per_kwh,
                     hvac_reduction_penalty_per_kwh,
                 )
@@ -384,8 +409,9 @@ def optimize_schedule(
                         action["step"] = float(step)
                         next_dp[next_soc] = (score, prior_path + [action])
         if not next_dp:
-            # A no-action schedule is the safe fallback if no optimizer state survives.
-            return safe_fallback_schedule(
+            # Preserve forecast demand and critical loads if no constrained
+            # optimization state survives; metrics will expose any cap breach.
+            fallback = safe_fallback_schedule(
                 demand,
                 solar,
                 critical_load_kwh=critical,
@@ -394,8 +420,14 @@ def optimize_schedule(
                 flexible_load_kwh=flexible,
                 price_per_kwh=price,
                 carbon_kg_per_kwh=carbon,
+                max_grid_import_kw=max_grid_import_kw,
                 step_hours=step_hours,
             )
+            fallback["fallback_reason"] = (
+                "No feasible schedule met all active constraints; returned a "
+                "no-action safe fallback."
+            )
+            return fallback
         dp = next_dp
 
     _, schedule = min(dp.values(), key=lambda item: item[0])
@@ -405,7 +437,9 @@ def optimize_schedule(
         "automatic_switching": False,
         "battery_final_soc_kwh": schedule[-1]["battery_soc_kwh"],
         "schedule": schedule,
-        "metrics": _schedule_metrics(demand, solar, price, carbon, schedule, step_hours),
+        "metrics": _schedule_metrics(
+            demand, solar, price, carbon, schedule, step_hours, max_grid_import_kw
+        ),
     }
 
 
@@ -419,11 +453,16 @@ def safe_fallback_schedule(
     flexible_load_kwh: Iterable[float] | None = None,
     price_per_kwh: Iterable[float] | None = None,
     carbon_kg_per_kwh: Iterable[float] | None = None,
+    max_grid_import_kw: float | None = None,
     step_hours: float = 1.0,
 ) -> dict:
-    """Return a conservative schedule with no battery dispatch or load shedding."""
+    """Return a conservative no-dispatch schedule and report any grid-cap breach."""
     if not isfinite(step_hours) or step_hours <= 0:
         raise ValueError("step_hours must be a positive finite number")
+    if max_grid_import_kw is not None and (
+        not isfinite(max_grid_import_kw) or max_grid_import_kw < 0
+    ):
+        raise ValueError("max_grid_import_kw must be a non-negative finite number")
     demand = _series("demand_kwh", demand_kwh)
     horizon = len(demand)
     solar = _aligned_series("solar_kwh", solar_kwh, horizon, 0.0)
@@ -467,5 +506,7 @@ def safe_fallback_schedule(
         "automatic_switching": False,
         "battery_final_soc_kwh": 0.0,
         "schedule": schedule,
-        "metrics": _schedule_metrics(demand, solar, price, carbon, schedule, step_hours),
+        "metrics": _schedule_metrics(
+            demand, solar, price, carbon, schedule, step_hours, max_grid_import_kw
+        ),
     }
