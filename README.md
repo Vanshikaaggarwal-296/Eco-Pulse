@@ -53,12 +53,14 @@ backend port, copy `frontend/.env.example` to `frontend/.env`, edit
 
 ### Data and integration status
 
-The frontend health indicator is connected to the existing backend. The other
-frontend screens are still sample demonstrations. CSV imports are validated and
-stored in the current browser, and update Overview only. This commit does not
-upload CSV files to the database or replace sample forecasts with model outputs.
-The sample-data disclosures are intentional; API connectivity does not make demo
-metrics live. See `frontend/README.md` for the CSV schema and proposed import API.
+The frontend health indicator checks the backend. Energy Optimization calls
+`POST /api/optimization/schedule` with a labelled sample forecast and displays
+the returned schedule and metrics. Outage Simulation calls
+`POST /api/optimization/outage` and displays the simulated backup estimate and
+shortfalls. Both endpoints are advisory/simulation only and never control
+physical equipment. Forecasts, other dashboard metrics and CSV imports remain
+sample or browser-local; no server CSV import or trained-model inference is
+connected.
 
 ### Frontend validation and production
 

@@ -36,25 +36,21 @@ npm run preview
 
 ## Current data status
 Without an import, the interface uses **illustrative sample data**. After a CSV is applied,
-Overview switches to recorded totals, a consumption chart and building totals calculated from
-those imported records. Other screens (including forecasts, recommendations and model scores)
-remain sample demonstrations. Importing a file does not train an ML model or connect a backend.
+Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. Forecasting, battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs. Importing a file does not train an ML model or connect a backend.
 
-## Backend integration plan
-The frontend is currently self-contained so the team leader can review it without a backend. Later, replace sample values with FastAPI responses. Suggested API contracts:
+## Backend integration status
 
-- `GET /api/v1/overview`
-- `GET /api/v1/forecasts?type=demand&horizon=24h`
-- `GET /api/v1/optimization/recommendations`
-- `POST /api/v1/optimization/simulate`
-- `GET /api/v1/battery/status`
-- `GET /api/v1/buildings`
-- `POST /api/v1/simulation/outage`
-- `GET /api/v1/anomalies`
-- `GET /api/v1/reports/summary`
+The UI checks `GET /api/health`. The Energy Optimization screen calls
+`POST /api/optimization/schedule`; the Outage Simulation screen calls
+`POST /api/optimization/outage`. Both use labelled sample profiles and display
+values returned by the FastAPI backend. They are advisory/simulation endpoints:
+the browser never sends equipment control commands, and human review remains
+required. Forecasts and most other dashboard values are still illustrative.
 
-Keep critical-load protection, comfort bounds, battery SOC limits and human approval as backend-enforced constraints. The browser UI must never be the only safety layer.
-
+For local development, the Vite proxy forwards `/api` to
+`http://127.0.0.1:8000`. Set `ECOPULSE_API_TARGET` in `.env` to use another
+backend address. CSV imports remain validated and stored in this browser only;
+they are not uploaded to the backend or database.
 ## Suggested team workflow
 Create a feature branch for frontend work, commit changes regularly, and merge through pull requests. Coordinate API field names with the backend and forecasting members before integration.
 
@@ -145,7 +141,4 @@ are additional components for a shared online system with real AI results.
 
 This directory is the frontend workspace of the Eco-Pulse repository. Start the
 existing FastAPI backend from the repository root (see the root README), then
-run this workspace in another terminal. The header checks `GET /api/health`
-through the Vite development proxy. Copy `.env.example` to `.env` to change
-the backend target. Other dashboard screens and browser-only CSV handling
-retain the data-mode limits described above. No server CSV import is wired yet.
+run this workspace in another terminal. The header checks `GET /api/health` through the Vite development proxy. Optimization and outage controls call the existing backend endpoints with labelled sample profiles. Copy `.env.example` to `.env` to change the backend target. Other dashboard screens and browser-only CSV handling retain the data-mode limits described above. No server CSV import is wired yet.
