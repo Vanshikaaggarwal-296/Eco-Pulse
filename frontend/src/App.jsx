@@ -4,6 +4,8 @@ import { DataImport, ImportedOverview } from './DataImport'
 import { useData } from './DataContext'
 import ApiStatus from './ApiStatus'
 import { runOutageSimulation, runScheduleRecommendation } from './optimizationApi'
+import { parseCSV } from './data'
+import { runForecastAnalysis } from './forecastingApi'
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, BatteryCharging, Bell,
   Building2, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, CircleHelp,
@@ -163,8 +165,103 @@ function Overview({ outage, setPage }) {
 
 function Forecasting() {
   const [tab,setTab,tabPhase,requestedTab]=useAnimatedValue('Demand')
-  const data = {labels:['06 AM','08 AM','10 AM','12 PM','02 PM','04 PM','06 PM','08 PM','10 PM'],datasets:[{label:'Expected',data:tab==='Occupancy'?[120,240,580,760,720,610,390,180,80]:tab==='Solar'?[0,35,110,185,210,175,90,12,0]:demandForecast,borderColor:'#c9283e',backgroundColor:'rgba(201,40,62,.08)',fill:true,tension:.4,pointRadius:3,borderWidth:2.5},{label:'Upper confidence',data:tab==='Occupancy'?[145,275,635,810,780,670,440,215,105]:tab==='Solar'?[0,45,130,205,235,195,110,22,0]:demandForecast.map(x=>x+24),borderColor:'#ab8b99',borderDash:[4,5],pointRadius:0,borderWidth:1.5,tension:.4},{label:'Lower confidence',data:tab==='Occupancy'?[95,205,525,710,660,550,340,145,55]:tab==='Solar'?[0,25,90,165,185,155,70,2,0]:demandForecast.map(x=>x-24),borderColor:'#ab8b99',borderDash:[4,5],pointRadius:0,borderWidth:1.5,tension:.4}]}
-  return <><SectionTitle eyebrow="PREDICTIVE INTELLIGENCE" title="AI Forecasting" desc="Probabilistic predictions for demand, occupancy and renewable generation." right={<Button><RefreshCw size={15}/> Refresh forecasts</Button>}/><div className="forecast-tabs">{['Demand','Occupancy','Solar'].map(t=><button onClick={()=>setTab(t)} aria-pressed={requestedTab===t} className={requestedTab===t?'active':''} key={t}>{t==='Demand'?<Zap size={16}/>:t==='Occupancy'?<Building2 size={16}/>:<Sun size={16}/>} {t} forecast</button>)}</div><div className="content-grid motion-frame" data-motion={tabPhase} data-view={String(tab)} key={tab}><div className="panel forecast-chart-panel"><div className="panel-head"><div><h3>{tab} forecast · Next 24 hours</h3><p>Expected values with upper and lower uncertainty bounds</p></div><span className="pill success">Model confidence: 92.4%</span></div><div className="forecast-chart"><Line data={data} options={lineOptions}/></div><div className="forecast-stats"><div><span>Next-hour prediction</span><b>{tab==='Demand'?'338 kW':tab==='Occupancy'?'624 people':'184 kWh'}</b></div><div><span>90% prediction interval</span><b>{tab==='Demand'?'± 24 kW':tab==='Occupancy'?'± 42 people':'± 16 kWh'}</b></div><div><span>Model MAE</span><b>{tab==='Demand'?'18.6 kW':tab==='Occupancy'?'31 people':'9.2 kWh'}</b></div></div></div><div className="panel model-panel"><h3>Forecast model health</h3><p className="panel-sub">Latest validation metrics</p><div className="model-score"><div className="score-ring"><b>94<span>%</span></b></div><div><b>Model performance</b><p>Within expected accuracy range</p></div></div>{[['Demand model','XGBoost + quantile regression','96.1%'],['Occupancy model','Gradient boosting','91.8%'],['Solar model','Weather-aware regression','94.2%']].map(x=><div className="model-row" key={x[0]}><div><b>{x[0]}</b><small>{x[1]}</small></div><strong>{x[2]}</strong></div>)}</div></div><div className="panel note-panel"><ShieldCheck size={19}/><div><b>Forecasts are advisory estimates</b><p>Prediction intervals communicate uncertainty. The optimization controller should use conservative bounds when planning critical loads and battery reserves.</p></div></div></>
+  const [csvText,setCsvText]=useState('')
+  const [fileName,setFileName]=useState('')
+  const [buildings,setBuildings]=useState([])
+  const [buildingId,setBuildingId]=useState('')
+  const [timezone,setTimezone]=useState('Asia/Kolkata')
+  const [horizon,setHorizon]=useState(24)
+  const [result,setResult]=useState(null)
+  const [loading,setLoading]=useState(false)
+  const [error,setError]=useState('')
+  const [notice,setNotice]=useState('')
+
+  const loadCSV=async(text,name)=>{
+    const parsed=parseCSV(text)
+    const required=['timestamp','building_id','demand_kw','occupancy','solar_kw']
+    const missing=required.filter(column=>!parsed.headers.includes(column))
+    if(missing.length)throw new Error(`CSV is missing required columns: ${missing.join(', ')}.`)
+    const buildingIndex=parsed.headers.indexOf('building_id')
+    const ids=[...new Set(parsed.rows.map(row=>row[buildingIndex].trim()).filter(Boolean))].sort()
+    if(!ids.length)throw new Error('The CSV needs at least one non-empty building_id.')
+    if(ids.length>10)throw new Error('The API supports up to 10 buildings per CSV.')
+    setCsvText(text);setFileName(name);setBuildings(ids);setBuildingId(ids[0]);setResult(null);setError('');setNotice(`${parsed.rows.length.toLocaleString()} rows loaded. The backend will validate hourly coverage and train the models.`)
+  }
+  const chooseFile=async event=>{
+    const file=event.target.files?.[0]
+    if(!file)return
+    setError('');setNotice('')
+    try{
+      if(file.size>5*1024*1024)throw new Error('Choose a CSV smaller than 5 MB.')
+      await loadCSV(await file.text(),file.name)
+    }catch(reason){setCsvText('');setFileName('');setBuildings([]);setBuildingId('');setResult(null);setError(reason?.message||'Could not read this CSV.')}
+    finally{event.target.value=''}
+  }
+  const loadSample=async()=>{
+    setError('');setNotice('Loading synthetic sample…')
+    try{
+      const response=await fetch(`${import.meta.env.BASE_URL}ai_ml_sample.csv`)
+      if(!response.ok)throw new Error('Could not load the included demo CSV.')
+      await loadCSV(await response.text(),'ai_ml_sample.csv')
+      setNotice('Synthetic demo data loaded. It is not real campus telemetry.')
+    }catch(reason){setError(reason?.message||'Could not load the demo CSV.');setNotice('')}
+  }
+  const run=async()=>{
+    if(!csvText||!buildingId)return
+    setLoading(true);setError('');setNotice('Training forecasts and evaluating the chronological holdout…')
+    try{
+      setResult(await runForecastAnalysis({csv_text:csvText,building_id:buildingId,timezone,horizon:Number(horizon)}))
+      setNotice('Forecasts, evaluation metrics and anomaly results came from the backend.')
+    }catch(reason){setResult(null);setError(reason?.name==='AbortError'?'The analysis took too long. Check that the backend is running and try again.':reason?.message||'Could not run the forecasting API.')}
+    finally{setLoading(false)}
+  }
+
+  const fields={Demand:{key:'demand_kw',unit:'kW',icon:Zap},Occupancy:{key:'occupancy',unit:'people',icon:Building2},Solar:{key:'solar_kw',unit:'kW',icon:Sun}}
+  const target=fields[tab]
+  const score=result?.evaluation?.scores?.[buildingId]?.[target.key]?.model
+  const forecastRows=result?.forecast||[]
+  const axisLabels=forecastRows.map(row=>new Date(row.timestamp).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}))
+  const data={labels:axisLabels,datasets:[
+    {label:'95th percentile',data:forecastRows.map(row=>row[`${target.key}_p95`]),borderColor:'#ab8b99',borderDash:[4,5],pointRadius:0,borderWidth:1.5,tension:.35},
+    {label:'Median forecast',data:forecastRows.map(row=>row[`${target.key}_p50`]),borderColor:'#c9283e',backgroundColor:'rgba(201,40,62,.08)',fill:false,tension:.4,pointRadius:2,borderWidth:2.5},
+    {label:'5th percentile',data:forecastRows.map(row=>row[`${target.key}_p05`]),borderColor:'#ab8b99',borderDash:[4,5],pointRadius:0,borderWidth:1.5,tension:.35}
+  ]}
+  const chartOptions={...lineOptions,plugins:{...lineOptions.plugins,legend:{display:true,position:'bottom'}},scales:{...lineOptions.scales,y:{...lineOptions.scales.y,ticks:{...lineOptions.scales.y.ticks,callback:value=>`${value} ${target.unit}`}}}}
+  const next=forecastRows[0]
+  const firstBand=next?`${Number(next[`${target.key}_p05`]).toFixed(1)}–${Number(next[`${target.key}_p95`]).toFixed(1)} ${target.unit}`:'—'
+  const alerts=result?.alerts||[]
+  const formatTime=value=>new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
+
+  return <>
+    <SectionTitle eyebrow="PREDICTIVE INTELLIGENCE" title="AI Forecasting" desc="Upload hourly building history to get backend forecasts, holdout metrics and explainable anomaly flags." right={<Button kind="primary" disabled={!csvText||loading} onClick={run}><RefreshCw size={15}/>{loading?'Analyzing…':'Run backend forecast'}</Button>}/>
+    <div className="panel forecast-input-panel">
+      <div className="panel-head"><div><h3>Forecast input</h3><p>CSV analysis runs in the Eco-Pulse backend. Your file is sent only when you press Run backend forecast.</p></div><span className="pill info">Advisory only</span></div>
+      <div className="forecast-input-grid">
+        <div><label className="field-label" htmlFor="forecast-csv">Hourly CSV</label><label className="btn forecast-file-picker" htmlFor="forecast-csv"><Upload size={15}/>{fileName||'Choose forecasting CSV'}<input id="forecast-csv" type="file" accept=".csv,text/csv" onChange={chooseFile}/></label><small className="forecast-help">Required columns: timestamp, building_id, demand_kw, occupancy, solar_kw. Hourly rows for at least 35 days; timestamps must include a timezone.</small></div>
+        <label><span className="field-label">Building</span><select value={buildingId} onChange={event=>{setBuildingId(event.target.value);setResult(null)}} disabled={!buildings.length}>{buildings.map(id=><option key={id} value={id}>{id}</option>)}</select></label>
+        <label><span className="field-label">Forecast horizon</span><select value={horizon} onChange={event=>setHorizon(event.target.value)}><option value={12}>12 hours</option><option value={24}>24 hours</option><option value={48}>48 hours</option></select></label>
+        <label><span className="field-label">Timezone</span><input value={timezone} onChange={event=>setTimezone(event.target.value)} aria-label="Forecast timezone" placeholder="Asia/Kolkata"/></label>
+      </div>
+      <div className="forecast-input-actions"><Button onClick={loadSample} disabled={loading}><Zap size={14}/> Load synthetic demo data</Button><Button kind="primary" onClick={run} disabled={!csvText||loading}><Cpu size={14}/>{loading?'Training models…':'Run backend forecast'}</Button></div>
+      {notice&&<p className="forecast-feedback" role="status">{notice}</p>}
+      {error&&<div className="forecast-error" role="alert"><AlertTriangle size={17}/><div><b>Forecast request could not complete</b><p>{error}</p></div></div>}
+    </div>
+    {result&&<>
+      <div className="optimization-banner"><div className="opt-icon"><Activity size={20}/></div><div><b>Backend forecast received · {buildingId}</b><p>POST /api/forecasting/analyze · {horizon}-hour horizon · source: uploaded CSV. No equipment is controlled.</p></div><span className="pill success">{result.evaluation?.test_days||7}-day holdout</span></div>
+      <div className="forecast-tabs">{Object.entries(fields).map(([name,field])=>{const Icon=field.icon;return <button onClick={()=>setTab(name)} aria-pressed={requestedTab===name} className={requestedTab===name?'active':''} key={name}><Icon size={16}/> {name} forecast</button>})}</div>
+      <div className="content-grid motion-frame" data-motion={tabPhase} data-view={String(tab)} key={tab}>
+        <div className="panel forecast-chart-panel"><div className="panel-head"><div><h3>{tab} forecast · Next {horizon} hours</h3><p>Backend median with 5th–95th percentile prediction bounds</p></div><span className="pill success">{score?.interval_coverage_pct==null?'Interval metrics':`${Number(score.interval_coverage_pct).toFixed(1)}% holdout coverage`}</span></div><div className="forecast-chart"><Line data={data} options={chartOptions}/></div>
+          <div className="forecast-stats"><div><span>Next-hour median</span><b>{next?`${Number(next[`${target.key}_p50`]).toFixed(1)} ${target.unit}`:'—'}</b></div><div><span>Next-hour 90% range</span><b>{firstBand}</b></div><div><span>Holdout MAE</span><b>{score?`${Number(score.mae).toFixed(2)} ${target.unit}`:'—'}</b></div></div>
+        </div>
+        <div className="panel model-panel"><h3>Chronological holdout</h3><p className="panel-sub">Measured from the uploaded history · {result.evaluation?.method}</p>{Object.entries(fields).map(([name,field])=>{const item=result.evaluation?.scores?.[buildingId]?.[field.key]?.model;return <div className="model-row" key={name}><div><b>{name}</b><small>MAE {item?Number(item.mae).toFixed(2):'—'} {field.unit} · RMSE {item?Number(item.rmse).toFixed(2):'—'} {field.unit}</small></div><strong>{item?.interval_coverage_pct==null?'—':`${Number(item.interval_coverage_pct).toFixed(0)}%`}</strong></div>})}<div className="safe-note"><ShieldCheck size={17}/><span>Historical holdout metrics describe this file only; they are not a guarantee of future accuracy.</span></div></div>
+      </div>
+      <div className="panel"><div className="panel-head"><div><h3>Explainable anomaly flags</h3><p>{alerts.length} flagged reading{alerts.length===1?'':'s'} from the analyzed history</p></div><span className={`pill ${alerts.length?'warning':'success'}`}>{alerts.length?'Review needed':'No flags'}</span></div>
+        {alerts.length?alerts.slice(0,50).map((alert,index)=><div className="anomaly-row" key={`${alert.timestamp}-${alert.signal}-${index}`}><div className="anomaly-icon medium"><AlertTriangle size={16}/></div><div className="anomaly-name"><b>{alert.signal} · {alert.reason.replaceAll('_',' ')}</b><small>{alert.building_id} · {formatTime(alert.timestamp)}</small></div><span className="pill warning">{alert.severity}</span><span className="anomaly-time">Value {Number(alert.value).toFixed(1)} · expected {alert.expected==null?'—':Number(alert.expected).toFixed(1)}</span><span className="anomaly-time">Score {alert.score==null?'—':Number(alert.score).toFixed(1)}</span></div>):<div className="forecast-empty">No anomaly flags were returned for the analyzed readings.</div>}
+        {alerts.length>50&&<small className="forecast-help">Showing the first 50 of {alerts.length} flags.</small>}
+      </div>
+    </>}
+    {!result&&!loading&&<div className="note-panel"><ShieldCheck size={19}/><div><b>Forecasts are advisory estimates</b><p>Try the clearly labelled synthetic sample or upload at least 35 days of hourly demand, occupancy and solar history. This dashboard sends the CSV to the backend only after you run the analysis.</p></div></div>}
+  </>
 }
 
 function Optimization() {
