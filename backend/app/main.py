@@ -10,6 +10,7 @@ from app.database.models import initialize_database
 from app.energy import router as energy_router
 from app.health import router as health_router
 from app.optimization import router as optimization_router
+from app.forecasting import router as forecasting_router
 
 
 # Configure logging
@@ -74,6 +75,12 @@ app.include_router(
     tags=["Energy Optimization"],
 )
 
+app.include_router(
+    forecasting_router,
+    prefix="/api/forecasting",
+    tags=["AI Forecasting"],
+)
+
 
 # Root endpoint
 @app.get("/", tags=["Root"])
@@ -85,4 +92,5 @@ def root():
         "energy_analytics": "/api/energy/analytics",
         "energy_optimization": "/api/optimization/schedule",
         "outage_simulation": "/api/optimization/outage",
+        "forecast_analysis": "/api/forecasting/analyze",
     }

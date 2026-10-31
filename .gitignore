@@ -235,3 +235,4 @@ backend/.pytest_cache/
 /frontend/.env.*
 !/frontend/.env.example
 /frontend/*.log
+results.json

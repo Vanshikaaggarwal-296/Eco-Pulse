@@ -36,7 +36,7 @@ npm run preview
 
 ## Current data status
 Without an import, the interface uses **illustrative sample data**. After a CSV is applied,
-Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. Forecasting, battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs. Importing a file does not train an ML model or connect a backend.
+Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. Forecasting, battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs. Applying a CSV here updates browser-local overview data; it does not send that file to the backend ML analysis endpoint.
 
 ## Backend integration status
 
@@ -45,7 +45,9 @@ The UI checks `GET /api/health`. The Energy Optimization screen calls
 `POST /api/optimization/outage`. Both use labelled sample profiles and display
 values returned by the FastAPI backend. They are advisory/simulation endpoints:
 the browser never sends equipment control commands, and human review remains
-required. Forecasts and most other dashboard values are still illustrative.
+required. The backend also exposes `POST /api/forecasting/analyze` for CSV-based
+model training and evaluation, but this dashboard does not call it yet. Forecasts
+and most other dashboard values remain illustrative.
 
 For local development, the Vite proxy forwards `/api` to
 `http://127.0.0.1:8000`. Set `ECOPULSE_API_TARGET` in `.env` to use another
@@ -131,11 +133,12 @@ These endpoints are a proposed integration contract, not implemented by this fro
 The server should enforce the same schema, reject duplicates, record upload provenance and
 return validation errors and a dataset ID. Do not trust browser-only validation. Live meter/API
 feeds can write the same database so the dashboard uses a single data source. Keep changing
-records out of application source code. A working ML pipeline additionally requires suitable
-historical data, training/evaluation, a saved model and an inference endpoint.
+records out of application source code. The forecasting API currently trains per request
+and does not persist models; a production pipeline needs suitable historical data, model
+lifecycle, monitoring and authenticated data access.
 
-To run the UI locally you need Node.js and npm. A backend, database, trained model and hosting
-are additional components for a shared online system with real AI results.
+To run the UI locally you need Node.js and npm. A backend, suitable historical data,
+persistent storage and hosting are additional components for a shared online system.
 
 ## Eco-Pulse repository integration
 
