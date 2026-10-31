@@ -48,6 +48,17 @@ From the repository root, run:
 python -m unittest discover -s tests -v
 ```
 
+## Try the synthetic holdout demo
+
+From the repository root, generate the clearly labeled sample data and score the final 24 hours against the previous 14 days:
+
+```powershell
+python examples/generate_sample_data.py
+python examples/evaluate_sample.py
+```
+
+The output includes MAE, RMSE, MAPE, and prediction-range coverage for demand, occupancy, and solar generation. These synthetic scores demonstrate the evaluation flow; they are not campus performance claims.
+
 ## Baseline behavior
 
 The baseline repeats the latest matching daily or weekly pattern and estimates prediction ranges from historical seasonal errors. With short histories it falls back to a recent-value baseline and a conservative range. Once representative campus data is available, compare this baseline with stronger models using the included metrics.
