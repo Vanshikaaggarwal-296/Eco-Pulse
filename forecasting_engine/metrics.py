@@ -82,4 +82,3 @@ def prediction_interval_metrics(
         "mean_width": float(np.mean(widths)),
         "interval_score": float(np.mean(interval_scores)),
     }
-}
