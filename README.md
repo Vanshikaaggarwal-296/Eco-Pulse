@@ -14,6 +14,13 @@ schedule and estimated savings; it never switches physical equipment. The
 outage endpoint reports simulated backup duration and any critical-load
 shortfall.
 
+The AI/ML analysis endpoint is available at `POST /api/forecasting/analyze`.
+It accepts an uploaded CSV as `csv_text`, fits per-building demand, occupancy
+and solar forecasts, calculates chronological holdout metrics, and reports
+explainable anomalies. Optional `control_inputs` ask the existing optimizer for
+advisory recommendations using conservative demand/solar forecast bounds.
+No endpoint switches physical equipment.
+
 Run the API from the repository root with:
 
 ```powershell
@@ -32,8 +39,9 @@ The existing API and optimization implementation remain in their original folder
 | Folder | Responsibility |
 | --- | --- |
 | `frontend/` | Dashboard, navigation, browser CSV mapping and preview |
-| `backend/` | FastAPI health, energy analytics and optimization HTTP routes |
+| `backend/` | FastAPI health, energy analytics, forecasting and optimization routes |
 | `optimization_engine/` | Recommendation and outage simulation logic |
+| `forecasting_engine/` | Demand, occupancy and solar quantile forecasts, evaluation and anomaly detection |
 | `tests/`, `backend/tests/` | Existing Python checks |
 | `frontend/tests/` | CSV validation and aggregation checks |
 
@@ -59,8 +67,26 @@ the returned schedule and metrics. Outage Simulation calls
 `POST /api/optimization/outage` and displays the simulated backup estimate and
 shortfalls. Both endpoints are advisory/simulation only and never control
 physical equipment. Forecasts, other dashboard metrics and CSV imports remain
-sample or browser-local; no server CSV import or trained-model inference is
-connected.
+sample or browser-local. The AI/ML API accepts CSV analysis, but the dashboard's
+Forecasting screen and browser CSV import are not connected to that endpoint.
+
+### Run the AI/ML analysis
+
+Install the backend requirements as shown above. The included `sample_synthetic.csv`
+is artificial demonstration data, not campus telemetry. From the repository root,
+run:
+
+```powershell
+python analyze.py sample_synthetic.csv --building Academic_Block_A --output results.json
+```
+
+The input CSV requires `timestamp`, `building_id`, `demand_kw`, `occupancy`, and
+`solar_kw` columns, with continuous hourly observations for at least 35 days per
+building. Add `--timezone Asia/Kolkata` for local timestamps. To create a schedule,
+pass a JSON controls file with matching `price_per_kwh` and `carbon_kg_per_kwh`
+arrays and the site's battery/load limits using `--controls controls.json`.
+Forecasts train from the supplied history for each run; no pretrained model or
+real facility dataset is included.
 
 ### Frontend validation and production
 
