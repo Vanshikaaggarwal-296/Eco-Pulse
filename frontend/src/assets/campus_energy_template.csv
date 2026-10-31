@@ -1,0 +1,5 @@
+timestamp,building,consumption_kwh,solar_used_kwh,grid_import_kwh,cost_inr,carbon_kg
+2026-10-31T08:00:00+05:30,Academic Block A,120,35,85,720,60
+2026-10-31T08:00:00+05:30,Central Library,80,25,55,480,40
+2026-10-31T09:00:00+05:30,Academic Block A,140,50,90,840,70
+2026-10-31T09:00:00+05:30,Central Library,90,30,60,540,45

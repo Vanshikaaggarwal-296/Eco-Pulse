@@ -22,3 +22,8 @@ python -m uvicorn app.main:app --app-dir backend --reload
 ```
 
 Interactive request and response examples are available at `http://127.0.0.1:8000/docs`.
+
+## Frontend
+
+The React/Vite dashboard prototype and local run instructions are in [frontend/README.md](frontend/README.md). The UI uses sample data in most views; the optimization screens are not yet wired to the backend endpoints.
+
