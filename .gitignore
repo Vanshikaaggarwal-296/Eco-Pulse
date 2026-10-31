@@ -218,7 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Streamlit
+.streamlit/secrets.toml
 
+# Backend environment and generated files
 backend/.venv/
 backend/.env
 backend/*.db

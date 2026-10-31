@@ -1,2 +1,5 @@
 # Eco-Pulse
-AI-powered energy optimization system for campuses and hospitals that forecasts energy demand, optimizes electricity usage, and reduces energy costs and carbon emissions.
+
+**AI-Powered Carbon-Aware Energy Optimization System**
+
+Eco-Pulse is an AI-powered energy optimization platform for campuses and hospitals. It forecasts energy demand, optimizes electricity usage, and helps reduce energy costs and carbon emissions.
