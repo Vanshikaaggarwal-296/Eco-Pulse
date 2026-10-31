@@ -55,6 +55,14 @@ For solar or battery anomaly checks, pass that meter's column as `value_col`.
 The backend can convert returned DataFrames to JSON records with
 `result.to_dict(orient="records")` when exposing REST endpoints.
 
+## Run the included checks
+
+From the repository root, run:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
 ## What this baseline does
 
 It repeats the latest matching daily or weekly pattern and estimates prediction
