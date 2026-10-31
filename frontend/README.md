@@ -35,8 +35,8 @@ npm run preview
 - Data & Imports: CSV mapping, validation, preview and browser storage
 
 ## Current data status
-Without an import, the interface uses **illustrative sample data**. After a CSV is applied,
-Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. Forecasting, battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs. Applying a CSV here updates browser-local overview data; it does not send that file to the backend ML analysis endpoint.
+Without an import, most dashboard pages use **illustrative sample data**. After a CSV is applied,
+Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. AI Forecasting can separately upload hourly forecasting data to the backend and display the actual response. Battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs. Applying a CSV in Data & Imports still updates browser-local Overview data and does not send that file to the backend ML endpoint.
 
 ## Backend integration status
 
@@ -45,14 +45,27 @@ The UI checks `GET /api/health`. The Energy Optimization screen calls
 `POST /api/optimization/outage`. Both use labelled sample profiles and display
 values returned by the FastAPI backend. They are advisory/simulation endpoints:
 the browser never sends equipment control commands, and human review remains
-required. The backend also exposes `POST /api/forecasting/analyze` for CSV-based
-model training and evaluation, but this dashboard does not call it yet. Forecasts
-and most other dashboard values remain illustrative.
+required. The AI Forecasting screen calls `POST /api/forecasting/analyze` with a
+dedicated CSV upload and displays backend forecast quantiles, chronological
+holdout scores and explainable anomaly flags. The upload is sent only after the
+user presses **Run backend forecast**. Forecasts and most other dashboard values
+remain illustrative until real site history is supplied.
 
 For local development, the Vite proxy forwards `/api` to
 `http://127.0.0.1:8000`. Set `ECOPULSE_API_TARGET` in `.env` to use another
 backend address. CSV imports remain validated and stored in this browser only;
 they are not uploaded to the backend or database.
+
+### Run AI Forecasting
+
+Open **Menu → AI Forecasting**, then either click **Load synthetic demo data** or
+choose a CSV file. Select a building, forecast horizon and timezone, then click
+**Run backend forecast**. The CSV needs `timestamp`, `building_id`, `demand_kw`,
+`occupancy` and `solar_kw` columns, timezone-aware timestamps, and at least 35 days
+of continuous hourly data per building. `frontend/public/ai_ml_sample.csv` is
+artificial demo data only, not campus telemetry. The API response is advisory and
+does not control equipment. Invalid or insufficient history is reported from the
+backend in the screen.
 ## Suggested team workflow
 Create a feature branch for frontend work, commit changes regularly, and merge through pull requests. Coordinate API field names with the backend and forecasting members before integration.
 
