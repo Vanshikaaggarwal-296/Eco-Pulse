@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.database.models import initialize_database
 from app.energy import router as energy_router
 from app.health import router as health_router
+from app.optimization import router as optimization_router
 
 
 # Configure logging
@@ -67,6 +68,12 @@ app.include_router(
     tags=["Energy"],
 )
 
+app.include_router(
+    optimization_router,
+    prefix="/api/optimization",
+    tags=["Energy Optimization"],
+)
+
 
 # Root endpoint
 @app.get("/", tags=["Root"])
@@ -76,4 +83,6 @@ def root():
         "docs": "/docs",
         "health": "/api/health",
         "energy_analytics": "/api/energy/analytics",
+        "energy_optimization": "/api/optimization/schedule",
+        "outage_simulation": "/api/optimization/outage",
     }
