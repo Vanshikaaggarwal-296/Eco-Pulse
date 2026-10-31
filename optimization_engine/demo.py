@@ -35,10 +35,17 @@ def main() -> None:
         max_grid_import_kw=3.0,
         soc_steps=12,
     )
+    outage_battery = BatteryConfig(
+        capacity_kwh=20,
+        initial_soc_kwh=16,
+        min_soc_kwh=4,
+        max_discharge_kw=5,
+        discharge_efficiency=0.94,
+    )
     outage = simulate_islanding(
         critical_load_kwh=[2.0, 2.0, 2.0, 2.0],
         renewable_kwh=[0.0, 0.5, 0.0, 0.0],
-        battery=battery,
+        battery=outage_battery,
     )
 
     print(
