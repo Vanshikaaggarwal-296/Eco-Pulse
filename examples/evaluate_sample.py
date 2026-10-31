@@ -15,6 +15,7 @@ from forecasting_engine import (
     forecast_metrics,
     forecast_occupancy,
     forecast_renewable,
+    prediction_interval_metrics,
 )
 
 
@@ -42,13 +43,18 @@ def main() -> None:
         prediction = forecaster(history, horizon=HORIZON, value_col=value_col)
         actual = holdout[value_col].to_numpy(dtype=float)
         scores = forecast_metrics(actual, prediction["forecast"])
-        covered = (actual >= prediction["lower"].to_numpy()) & (
-            actual <= prediction["upper"].to_numpy()
+        interval_scores = prediction_interval_metrics(
+            actual,
+            prediction["lower"],
+            prediction["upper"],
+            confidence_level=float(prediction["confidence_level"].iloc[0]),
         )
         mape = "undefined" if scores["mape"] is None else f"{scores['mape']:.2f}%"
         print(
             f"{label}: MAE={scores['mae']:.2f}, RMSE={scores['rmse']:.2f}, "
-            f"MAPE={mape}, interval coverage={covered.mean():.1%}"
+            f"MAPE={mape}, interval coverage={interval_scores['coverage']:.1%}, "
+            f"mean interval width={interval_scores['mean_width']:.2f}, "
+            f"interval score={interval_scores['interval_score']:.2f}"
         )
 
 
