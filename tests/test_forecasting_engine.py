@@ -10,6 +10,7 @@ from forecasting_engine import (
     forecast_metrics,
     forecast_occupancy,
     forecast_renewable,
+    prediction_interval_metrics,
 )
 
 
@@ -43,6 +44,21 @@ class ForecastingEngineTests(unittest.TestCase):
         self.assertAlmostEqual(scores["mae"], 2.0)
         self.assertAlmostEqual(scores["rmse"], 2.0)
         self.assertAlmostEqual(scores["mape"], 15.0)
+
+    def test_prediction_interval_metrics_include_miss_penalty(self):
+        scores = prediction_interval_metrics(
+            actual=[10, 20, 30],
+            lower=[9, 19, 31],
+            upper=[11, 21, 32],
+            confidence_level=0.90,
+        )
+        self.assertAlmostEqual(scores["coverage"], 2 / 3)
+        self.assertAlmostEqual(scores["mean_width"], 5 / 3)
+        self.assertAlmostEqual(scores["interval_score"], 25 / 3)
+
+    def test_prediction_interval_metrics_reject_reversed_bounds(self):
+        with self.assertRaises(ValueError):
+            prediction_interval_metrics([10], [11], [9])
 
     def test_anomaly_detector_flags_a_large_jump(self):
         data = pd.DataFrame(
