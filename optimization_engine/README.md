@@ -2,8 +2,10 @@
 
 This is Vanshika's Member 2 Energy Optimization & Control module. It produces
 recommendations for battery dispatch and flexible-load scheduling over a forecast
-horizon. Critical load is never curtailed, HVAC stays at or above the supplied
-comfort-safe minimum, and battery SOC never drops below its protected reserve.
+horizon. Normal grid-connected schedules never curtail critical load, HVAC stays
+at or above the supplied comfort-safe minimum, and battery SOC stays at or above its
+protected reserve. During outage simulation only, the battery can use reserve
+energy down to `min_soc_kwh`; any critical-load shortfall is reported.
 
 ## Install
 
@@ -41,16 +43,33 @@ recommendation = optimize_schedule(
 ```
 
 `demand_kwh`, `solar_kwh`, `price_per_kwh`, and `carbon_kg_per_kwh` must have
-the same length. Energy values are per time step in kWh; price and carbon values
-are per kWh. Set `step_hours` if the intervals are not one hour. `carbon_weight`
-sets how strongly the objective values one kg of CO2e relative to the price
-units. Flexible loads are either fully served or fully curtailed in each time
-step, using a service penalty. The prototype does not model later recovery of
-curtailed energy. Flexible loads are separate from the critical-load slice.
+the same length. Energy values are the energy **within each interval** in kWh;
+price and carbon values are per kWh. `step_hours` is used to convert battery
+power limits to interval energy and to report peak power in kW. Cost and carbon
+are calculated by multiplying interval kWh by their per-kWh rates.
 
-The result includes a schedule, estimated cost/carbon/peak reductions, comfort
-and critical-load violation counts, and `requires_human_approval: true`. These
-are model estimates, not guaranteed savings.
+`carbon_weight` is the chosen value of one kg CO2e in the same currency units
+as `price_per_kwh`. Flexible loads are separate from the critical-load slice
+and are either served or curtailed in that interval; the prototype does not
+move curtailed energy to a later interval. Give the optimizer only loads that
+are safe to curtail, and set `flexible_shed_penalty_per_kwh` to reflect their
+operational importance. HVAC can be reduced only as far as the supplied
+comfort-safe energy minimum; this is a proxy supplied by the comfort or
+occupancy logic, not a temperature simulation.
+
+The controller uses a finite-horizon dynamic program over discrete battery
+SOC levels. `soc_steps` controls the resolution. For receding-horizon MPC
+behavior, call it again as updated forecasts arrive and use only the next
+interval's recommendation. It assumes the grid can supply remaining loads in
+normal operation; outage critical-load shortfalls are reported separately by
+`simulate_islanding`.
+
+The result includes a schedule, estimated cost/carbon reductions, estimated
+peak demand in kW (and interval energy for compatibility), comfort and
+critical-load violation counts, and `requires_human_approval: true`. Cost
+metrics estimate the electricity bill and exclude battery degradation; the
+optimizer can include degradation in its decision objective when configured.
+All savings values are simulations, not guaranteed savings.
 
 ## Safe fallback and outage demo
 
@@ -83,6 +102,19 @@ From the repository root:
 python -m unittest discover -s tests -v
 ```
 
-The demo assumes the forecasting and backend teams will pass aligned arrays or
-forecast records. The backend can expose the returned dictionary as JSON using
-FastAPI; the frontend can render the schedule and metrics.
+The optimization engine accepts aligned forecast arrays; the forecasting and
+backend teammates can map their forecast records into this input contract. The
+backend can expose the returned dictionary as JSON using FastAPI; the frontend
+can render the schedule and metrics.
+
+## See a complete sample output
+
+From the repository root, run:
+
+```powershell
+python -m optimization_engine.demo
+```
+
+It prints a JSON recommendation and a separate outage simulation. A backend
+FastAPI route can return the same recommendation dictionary after mapping its
+request fields to the aligned arrays above.

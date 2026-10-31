@@ -33,6 +33,49 @@ class OptimizationEngineTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["optimized_cost"], 10)
         self.assertEqual(result["metrics"]["critical_load_violations"], 0)
 
+    def test_battery_does_not_discharge_more_energy_than_load_uses(self):
+        result = optimize_schedule(
+            demand_kwh=[1],
+            solar_kwh=[0],
+            price_per_kwh=[10],
+            carbon_kg_per_kwh=[0],
+            battery=BatteryConfig(
+                capacity_kwh=10,
+                initial_soc_kwh=10,
+                max_discharge_kw=10,
+                discharge_efficiency=1,
+            ),
+            soc_steps=10,
+        )
+
+        self.assertEqual(result["schedule"][0]["battery_discharge_kwh"], 1)
+        self.assertEqual(result["schedule"][0]["battery_soc_kwh"], 9)
+
+    def test_cost_carbon_and_peak_metrics_use_interval_energy_correctly(self):
+        result = optimize_schedule(
+            demand_kwh=[1],
+            solar_kwh=[0],
+            price_per_kwh=[8],
+            carbon_kg_per_kwh=[0.5],
+            step_hours=0.25,
+        )
+
+        metrics = result["metrics"]
+        self.assertEqual(metrics["baseline_cost"], 8)
+        self.assertEqual(metrics["optimized_cost"], 8)
+        self.assertEqual(metrics["baseline_carbon_kg"], 0.5)
+        self.assertEqual(metrics["baseline_peak_grid_kw"], 4)
+
+    def test_soc_steps_must_be_an_integer(self):
+        with self.assertRaises(ValueError):
+            optimize_schedule(
+                demand_kwh=[1],
+                solar_kwh=[0],
+                price_per_kwh=[1],
+                carbon_kg_per_kwh=[0],
+                soc_steps=2.5,
+            )
+
     def test_critical_and_comfort_loads_are_protected(self):
         result = optimize_schedule(
             demand_kwh=[10],

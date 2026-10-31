@@ -186,6 +186,11 @@ def _step_options(
             solar_surplus = max(0.0, solar[step] - served_load)
             charge_from_solar = min(charge_input, solar_surplus)
             charge_from_grid = charge_input - charge_from_solar
+            # Do not claim battery energy that the load cannot consume. Any
+            # excess discharge would otherwise disappear from the energy
+            # balance while still reducing the reported state of charge.
+            if discharge_output > grid_for_load + 1e-9:
+                continue
             battery_used = min(discharge_output, grid_for_load)
             grid_import = max(0.0, grid_for_load - battery_used + charge_from_grid)
             weighted_energy_price = price[step] + carbon_weight * carbon[step]
@@ -199,8 +204,8 @@ def _step_options(
                 else 0.0
             )
             objective = (
-                grid_import * weighted_energy_price * step_hours
-                + service_penalty * step_hours
+                grid_import * weighted_energy_price
+                + service_penalty
                 + degradation
             )
             renewable_used = min(served_load, solar[step]) + charge_from_solar
@@ -208,13 +213,18 @@ def _step_options(
                 {
                     "objective": objective,
                     "grid_import_kwh": grid_import,
+                    "grid_import_kw": grid_import / step_hours,
+                    "load_served_kwh": served_load,
                     "battery_soc_kwh": next_soc,
                     "battery_charge_from_grid_kwh": charge_from_grid,
                     "battery_charge_from_solar_kwh": charge_from_solar,
+                    "battery_charge_kw": charge_input / step_hours,
                     "battery_discharge_kwh": battery_used,
+                    "battery_discharge_kw": battery_used / step_hours,
                     "critical_load_kwh": critical[step],
                     "hvac_served_kwh": served_hvac,
                     "hvac_min_kwh": hvac_min[step],
+                    "flexible_load_served_kwh": served_flexible,
                     "flexible_load_shed_kwh": shed_flexible,
                     "renewable_used_kwh": renewable_used,
                     "renewable_curtailed_kwh": max(0.0, solar[step] - renewable_used),
@@ -233,18 +243,20 @@ def _schedule_metrics(
 ) -> dict[str, float | int | None]:
     baseline_import = [max(0.0, load - sun) for load, sun in zip(demand, solar)]
     optimized_import = [item["grid_import_kwh"] for item in schedule]
-    baseline_cost = sum(value * rate * step_hours for value, rate in zip(baseline_import, price))
+    baseline_cost = sum(value * rate for value, rate in zip(baseline_import, price))
     optimized_cost = sum(
-        item["grid_import_kwh"] * rate * step_hours
+        item["grid_import_kwh"] * rate
         for item, rate in zip(schedule, price)
     )
     baseline_carbon = sum(
-        value * rate * step_hours for value, rate in zip(baseline_import, carbon)
+        value * rate for value, rate in zip(baseline_import, carbon)
     )
     optimized_carbon = sum(
-        item["grid_import_kwh"] * rate * step_hours
+        item["grid_import_kwh"] * rate
         for item, rate in zip(schedule, carbon)
     )
+    baseline_peak_kwh = max(baseline_import, default=0.0)
+    optimized_peak_kwh = max(optimized_import, default=0.0)
     comfort_violations = sum(
         item["hvac_served_kwh"] + 1e-9 < item["hvac_min_kwh"] for item in schedule
     )
@@ -260,10 +272,15 @@ def _schedule_metrics(
         "baseline_carbon_kg": baseline_carbon,
         "optimized_carbon_kg": optimized_carbon,
         "estimated_carbon_savings_kg": baseline_carbon - optimized_carbon,
-        "baseline_peak_grid_kwh": max(baseline_import, default=0.0),
-        "optimized_peak_grid_kwh": max(optimized_import, default=0.0),
-        "estimated_peak_reduction_kwh": max(baseline_import, default=0.0)
-        - max(optimized_import, default=0.0),
+        # Keep interval-energy fields for existing consumers, and expose true
+        # power metrics for peak-demand reporting at any interval length.
+        "baseline_peak_grid_kwh": baseline_peak_kwh,
+        "optimized_peak_grid_kwh": optimized_peak_kwh,
+        "estimated_peak_reduction_kwh": baseline_peak_kwh - optimized_peak_kwh,
+        "baseline_peak_grid_kw": baseline_peak_kwh / step_hours,
+        "optimized_peak_grid_kw": optimized_peak_kwh / step_hours,
+        "estimated_peak_reduction_kw": (baseline_peak_kwh - optimized_peak_kwh)
+        / step_hours,
         "comfort_violations": comfort_violations,
         "critical_load_violations": 0,
     }
@@ -292,7 +309,8 @@ def optimize_schedule(
     Critical loads are always served. HVAC may only move between its forecast
     demand and a caller-supplied comfort-safe minimum; with no minimum supplied,
     HVAC stays at its forecast demand. Flexible loads are either served or
-    deferred for one interval, using a service penalty in the objective.
+    curtailed in the current interval using a service penalty; this prototype
+    does not reschedule curtailed energy into a later interval.
 
     The returned schedule is advice for a human or downstream controller. It
     never switches equipment automatically. ``carbon_weight`` expresses the
@@ -309,7 +327,7 @@ def optimize_schedule(
         or hvac_reduction_penalty_per_kwh < 0
     ):
         raise ValueError("service penalties must be non-negative finite numbers")
-    if isinstance(soc_steps, bool) or soc_steps < 2:
+    if isinstance(soc_steps, bool) or not isinstance(soc_steps, int) or soc_steps < 2:
         raise ValueError("soc_steps must be an integer of at least 2")
 
     profiles = _validate_profiles(
@@ -426,13 +444,18 @@ def safe_fallback_schedule(
             {
                 "step": float(step),
                 "grid_import_kwh": max(0.0, load - sun),
+                "grid_import_kw": max(0.0, load - sun) / step_hours,
+                "load_served_kwh": load,
                 "battery_soc_kwh": 0.0,
                 "battery_charge_from_grid_kwh": 0.0,
                 "battery_charge_from_solar_kwh": 0.0,
+                "battery_charge_kw": 0.0,
                 "battery_discharge_kwh": 0.0,
+                "battery_discharge_kw": 0.0,
                 "critical_load_kwh": critical[step],
                 "hvac_served_kwh": hvac[step],
                 "hvac_min_kwh": hvac_min[step],
+                "flexible_load_served_kwh": flexible[step],
                 "flexible_load_shed_kwh": 0.0,
                 "renewable_used_kwh": renewable_to_load,
                 "renewable_curtailed_kwh": max(0.0, sun - renewable_to_load),
