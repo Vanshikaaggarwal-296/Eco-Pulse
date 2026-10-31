@@ -66,9 +66,16 @@ The frontend health indicator checks the backend. Energy Optimization calls
 the returned schedule and metrics. Outage Simulation calls
 `POST /api/optimization/outage` and displays the simulated backup estimate and
 shortfalls. Both endpoints are advisory/simulation only and never control
-physical equipment. Forecasts, other dashboard metrics and CSV imports remain
-sample or browser-local. The AI/ML API accepts CSV analysis, but the dashboard's
-Forecasting screen and browser CSV import are not connected to that endpoint.
+physical equipment. The AI Forecasting screen calls `POST /api/forecasting/analyze`
+with a dedicated hourly CSV upload and displays returned forecasts, holdout metrics
+and anomaly flags. The separate Data & Imports flow remains browser-local, and
+other dashboard metrics still use illustrative sample values.
+
+To try it, open **AI Forecasting**, choose **Load synthetic demo data** or upload a
+CSV with at least 35 days of continuous hourly readings, select a building and
+press **Run backend forecast**. The required columns are `timestamp`,
+`building_id`, `demand_kw`, `occupancy` and `solar_kw`; timestamps must include a
+timezone. The included example is synthetic and is not campus telemetry.
 
 ### Run the AI/ML analysis
 
