@@ -227,3 +227,11 @@ backend/.env
 backend/*.db
 backend/**/__pycache__/
 backend/.pytest_cache/
+
+# React frontend build and local dependencies
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.env
+/frontend/.env.*
+!/frontend/.env.example
+/frontend/*.log

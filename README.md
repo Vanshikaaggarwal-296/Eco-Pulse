@@ -22,3 +22,53 @@ python -m uvicorn app.main:app --app-dir backend --reload
 ```
 
 Interactive request and response examples are available at `http://127.0.0.1:8000/docs`.
+
+## Frontend workspace
+
+The React + Vite dashboard lives in `frontend/`. It includes the red/off-white
+split-panel menu, responsive navigation, charts, simulations and local CSV import.
+The existing API and optimization implementation remain in their original folders.
+
+| Folder | Responsibility |
+| --- | --- |
+| `frontend/` | Dashboard, navigation, browser CSV mapping and preview |
+| `backend/` | FastAPI health, energy analytics and optimization HTTP routes |
+| `optimization_engine/` | Recommendation and outage simulation logic |
+| `tests/`, `backend/tests/` | Existing Python checks |
+| `frontend/tests/` | CSV validation and aggregation checks |
+
+Start the backend using the command above. In a **second terminal**, run:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Open the localhost URL Vite prints. Its `/api` development proxy forwards to
+`http://127.0.0.1:8000`, including the existing `GET /api/health` route. The header
+shows real connection status instead of assuming the API is online. To use another
+backend port, copy `frontend/.env.example` to `frontend/.env`, edit
+`ECOPULSE_API_TARGET`, and restart Vite.
+
+### Data and integration status
+
+The frontend health indicator is connected to the existing backend. The other
+frontend screens are still sample demonstrations. CSV imports are validated and
+stored in the current browser, and update Overview only. This commit does not
+upload CSV files to the database or replace sample forecasts with model outputs.
+The sample-data disclosures are intentional; API connectivity does not make demo
+metrics live. See `frontend/README.md` for the CSV schema and proposed import API.
+
+### Frontend validation and production
+
+```powershell
+cd frontend
+npm test
+npm run build
+```
+
+The generated `frontend/dist/` is ignored by Git. Host that build with a reverse
+proxy forwarding `/api` to FastAPI, or set `VITE_API_BASE_URL` at build time to the
+public backend origin and configure `CORS_ORIGINS` there. Vite's development proxy
+does not run in a production static build. Do not commit `.env` files or credentials.
