@@ -71,8 +71,7 @@ with a dedicated hourly CSV upload and displays returned forecasts, holdout metr
 and anomaly flags. Data & Imports posts normalized readings to
 `POST /api/energy/readings/batch` and keeps the full uploaded dataset in browser storage
 for Overview. The backend stores timestamp, building, consumption, solar-used value and
-optional occupancy; cost, grid-import and carbon values remain browser-only. Clearing the
-browser copy does not remove backend readings. Other dashboard metrics still use
+optional occupancy, grid-import, cost and carbon values. Clearing the browser copy does not remove backend readings. Other dashboard metrics still use
 illustrative sample values.
 
 To try it, open **AI Forecasting**, choose **Load synthetic demo data** or upload a

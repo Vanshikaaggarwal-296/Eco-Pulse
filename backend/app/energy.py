@@ -19,10 +19,22 @@ class EnergyReadingCreate(BaseModel):
     consumption_kwh: float = Field(ge=0)
     solar_generation_kwh: float = Field(ge=0)
     occupancy: int | None = Field(default=None, ge=0)
+    grid_import_kwh: float | None = Field(default=None, ge=0)
+    cost_inr: float | None = Field(default=None, ge=0)
+    carbon_kg: float | None = Field(default=None, ge=0)
 
 
 class EnergyReadingBatch(BaseModel):
     readings: list[EnergyReadingCreate] = Field(min_length=1, max_length=10000)
+
+
+def _validate_reading(reading: EnergyReadingCreate) -> None:
+    solar_and_grid = reading.solar_generation_kwh + (reading.grid_import_kwh or 0)
+    if solar_and_grid > reading.consumption_kwh + 1e-6:
+        raise HTTPException(
+            status_code=422,
+            detail="Solar used plus grid import cannot exceed consumption.",
+        )
 
 
 # --------------------------------------------------
@@ -32,6 +44,7 @@ class EnergyReadingBatch(BaseModel):
 
 @router.post("/readings", status_code=201)
 def create_reading(reading: EnergyReadingCreate):
+    _validate_reading(reading)
     with get_connection() as connection:
         cursor = connection.execute(
             """
@@ -40,9 +53,12 @@ def create_reading(reading: EnergyReadingCreate):
                 building_id,
                 consumption_kwh,
                 solar_generation_kwh,
-                occupancy
+                occupancy,
+                grid_import_kwh,
+                cost_inr,
+                carbon_kg
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reading.timestamp.isoformat(),
@@ -50,6 +66,9 @@ def create_reading(reading: EnergyReadingCreate):
                 reading.consumption_kwh,
                 reading.solar_generation_kwh,
                 reading.occupancy,
+                reading.grid_import_kwh,
+                reading.cost_inr,
+                reading.carbon_kg,
             ),
         )
 
@@ -67,6 +86,7 @@ def create_readings_batch(batch: EnergyReadingBatch):
     records = []
     seen = set()
     for reading in batch.readings:
+        _validate_reading(reading)
         if reading.timestamp.tzinfo is None or reading.timestamp.utcoffset() is None:
             raise HTTPException(
                 status_code=422,
@@ -99,8 +119,9 @@ def create_readings_batch(batch: EnergyReadingBatch):
             """
             INSERT INTO energy_readings (
                 timestamp, building_id, consumption_kwh,
-                solar_generation_kwh, occupancy
-            ) VALUES (?, ?, ?, ?, ?)
+                solar_generation_kwh, occupancy, grid_import_kwh,
+                cost_inr, carbon_kg
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -109,6 +130,9 @@ def create_readings_batch(batch: EnergyReadingBatch):
                     reading.consumption_kwh,
                     reading.solar_generation_kwh,
                     reading.occupancy,
+                    reading.grid_import_kwh,
+                    reading.cost_inr,
+                    reading.carbon_kg,
                 )
                 for timestamp, building_id, reading in records
             ],
@@ -211,10 +235,25 @@ def get_energy_analytics(
                         AS total_consumption_kwh,
                     COALESCE(SUM(solar_generation_kwh), 0)
                         AS total_solar_generation_kwh,
+                    COALESCE(SUM(COALESCE(
+                        grid_import_kwh,
+                        MAX(consumption_kwh - solar_generation_kwh, 0)
+                    )), 0) AS total_grid_import_kwh,
+                    COALESCE(SUM(cost_inr), 0) AS total_cost_inr,
+                    COUNT(cost_inr) AS cost_reading_count,
+                    COUNT(carbon_kg) AS recorded_carbon_count,
+                    COALESCE(SUM(COALESCE(
+                        carbon_kg,
+                        COALESCE(
+                            grid_import_kwh,
+                            MAX(consumption_kwh - solar_generation_kwh, 0)
+                        ) * ?
+                    )), 0) AS co2_emissions_kg,
                     COALESCE(AVG(occupancy), 0)
                         AS average_occupancy
                 FROM energy_readings
-                """
+                """,
+                (emission_factor,),
             ).fetchone()
         else:
             row = connection.execute(
@@ -226,12 +265,26 @@ def get_energy_analytics(
                         AS total_consumption_kwh,
                     COALESCE(SUM(solar_generation_kwh), 0)
                         AS total_solar_generation_kwh,
+                    COALESCE(SUM(COALESCE(
+                        grid_import_kwh,
+                        MAX(consumption_kwh - solar_generation_kwh, 0)
+                    )), 0) AS total_grid_import_kwh,
+                    COALESCE(SUM(cost_inr), 0) AS total_cost_inr,
+                    COUNT(cost_inr) AS cost_reading_count,
+                    COUNT(carbon_kg) AS recorded_carbon_count,
+                    COALESCE(SUM(COALESCE(
+                        carbon_kg,
+                        COALESCE(
+                            grid_import_kwh,
+                            MAX(consumption_kwh - solar_generation_kwh, 0)
+                        ) * ?
+                    )), 0) AS co2_emissions_kg,
                     COALESCE(AVG(occupancy), 0)
                         AS average_occupancy
                 FROM energy_readings
                 WHERE building_id = ?
                 """,
-                (building_id.strip(),),
+                (emission_factor, building_id.strip()),
             ).fetchone()
 
     reading_count = row["reading_count"]
@@ -239,14 +292,12 @@ def get_energy_analytics(
 
     consumption = float(row["total_consumption_kwh"])
     solar_generation = float(row["total_solar_generation_kwh"])
+    grid_energy = float(row["total_grid_import_kwh"])
     average_occupancy = float(row["average_occupancy"])
 
     # Solar energy can offset consumption, but cannot offset
     # more than the total consumption in this simplified model.
     solar_used = min(solar_generation, consumption)
-
-    # Estimated grid electricity needed after solar offset.
-    grid_energy = max(consumption - solar_generation, 0.0)
 
     # Solar contribution is capped at 100%.
     solar_percentage = (
@@ -255,8 +306,14 @@ def get_energy_analytics(
         else 0.0
     )
 
-    # Illustrative estimate, not a live grid measurement.
-    estimated_co2_kg = grid_energy * emission_factor
+    estimated_co2_kg = float(row["co2_emissions_kg"])
+    carbon_count = row["recorded_carbon_count"]
+    if reading_count and carbon_count == reading_count:
+        emissions_method = "Recorded carbon values from imported readings"
+    elif carbon_count:
+        emissions_method = "Recorded carbon where supplied; estimated from available grid energy otherwise"
+    else:
+        emissions_method = "Estimated using configured grid emission factor"
 
     return {
         "building_id": building_id,
@@ -268,8 +325,13 @@ def get_energy_analytics(
         "estimated_grid_energy_kwh": round(grid_energy, 2),
         "solar_contribution_percent": round(solar_percentage, 2),
         "average_occupancy": round(average_occupancy, 2),
+        "total_recorded_cost_inr": (
+            round(float(row["total_cost_inr"]), 2)
+            if row["cost_reading_count"] == reading_count and reading_count
+            else None
+        ),
         "emission_factor_kg_co2_per_kwh": emission_factor,
         "estimated_co2_emissions_kg": round(estimated_co2_kg, 2),
-        "emissions_method": "Estimated using configured grid emission factor",
+        "emissions_method": emissions_method,
         "data_mode": "historical_readings_demo",
     }

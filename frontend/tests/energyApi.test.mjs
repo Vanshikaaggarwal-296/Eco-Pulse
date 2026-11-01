@@ -15,8 +15,11 @@ test('batch import maps CSV rows to backend energy readings', async () => {
       timestamp: '2026-10-31T08:00:00+05:30',
       building: 'Academic Block A',
       consumption_kwh: 12.5,
-      solar_used_kwh: null,
-      occupancy: 23
+      solar_used_kwh: 2,
+      occupancy: 23,
+      grid_import_kwh: 8,
+      cost_inr: 25.5,
+      carbon_kg: 3.2
     }])
     assert.equal(result.created_count, 1)
     assert.equal(request.url, '/api/energy/readings/batch')
@@ -26,8 +29,11 @@ test('batch import maps CSV rows to backend energy readings', async () => {
         timestamp: '2026-10-31T08:00:00+05:30',
         building_id: 'Academic Block A',
         consumption_kwh: 12.5,
-        solar_generation_kwh: 0,
-        occupancy: 23
+        solar_generation_kwh: 2,
+        occupancy: 23,
+        grid_import_kwh: 8,
+        cost_inr: 25.5,
+        carbon_kg: 3.2
       }]
     })
   } finally {

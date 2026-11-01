@@ -24,6 +24,9 @@ def test_batch_import_stores_optional_occupancy(tmp_path, monkeypatch):
                     "building_id": building,
                     "consumption_kwh": 12.5,
                     "solar_generation_kwh": 3,
+                    "grid_import_kwh": 5,
+                    "cost_inr": 125.5,
+                    "carbon_kg": 2.1,
                 },
                 {
                     "timestamp": "2026-10-30T09:00:00+05:30",
@@ -31,6 +34,9 @@ def test_batch_import_stores_optional_occupancy(tmp_path, monkeypatch):
                     "consumption_kwh": 14,
                     "solar_generation_kwh": 2,
                     "occupancy": 28,
+                    "grid_import_kwh": 8,
+                    "cost_inr": 140,
+                    "carbon_kg": 2.8,
                 },
             ]
         },
@@ -43,6 +49,16 @@ def test_batch_import_stores_optional_occupancy(tmp_path, monkeypatch):
     ).json()["readings"]
     assert len(readings) == 2
     assert {row["occupancy"] for row in readings} == {None, 28}
+    assert {row["cost_inr"] for row in readings} == {125.5, 140.0}
+    assert {row["grid_import_kwh"] for row in readings} == {5.0, 8.0}
+    assert {row["carbon_kg"] for row in readings} == {2.1, 2.8}
+    analytics = client.get(
+        "/api/energy/analytics", params={"building_id": building}
+    ).json()
+    assert analytics["total_recorded_cost_inr"] == 265.5
+    assert analytics["estimated_grid_energy_kwh"] == 13
+    assert analytics["estimated_co2_emissions_kg"] == 4.9
+    assert analytics["emissions_method"] == "Recorded carbon values from imported readings"
 
 
 def test_batch_import_rejects_duplicate_instants_atomically(tmp_path, monkeypatch):
@@ -63,6 +79,26 @@ def test_batch_import_rejects_duplicate_instants_atomically(tmp_path, monkeypatc
     assert client.get(
         "/api/energy/readings", params={"building_id": building, "limit": 10}
     ).json()["count"] == 0
+
+
+def test_batch_import_rejects_energy_balance_violations(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / "balance.db")
+    initialize_database()
+    response = client.post(
+        "/api/energy/readings/batch",
+        json={
+            "readings": [
+                {
+                    "timestamp": "2026-10-30T08:00:00+05:30",
+                    "building_id": f"csv-balance-{uuid4()}",
+                    "consumption_kwh": 10,
+                    "solar_generation_kwh": 3,
+                    "grid_import_kwh": 8,
+                }
+            ]
+        },
+    )
+    assert response.status_code == 422
 
 
 def test_database_migration_makes_occupancy_optional_without_losing_rows(
@@ -100,4 +136,9 @@ def test_database_migration_makes_occupancy_optional_without_losing_rows(
         ).fetchone()
 
     assert occupancy[3] == 0
+    assert {column[1] for column in columns} >= {
+        "grid_import_kwh",
+        "cost_inr",
+        "carbon_kg",
+    }
     assert row == ("legacy-building", 4.0, 5)

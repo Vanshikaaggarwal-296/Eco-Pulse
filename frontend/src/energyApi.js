@@ -12,7 +12,10 @@ export async function uploadEnergyReadings(rows) {
         // The import field is actual solar used on site, which is the portion
         // that offsets consumption in the backend's simplified energy model.
         solar_generation_kwh: row.solar_used_kwh ?? 0,
-        occupancy: row.occupancy
+        occupancy: row.occupancy,
+        grid_import_kwh: row.grid_import_kwh,
+        cost_inr: row.cost_inr,
+        carbon_kg: row.carbon_kg
       }))
     })
   })
