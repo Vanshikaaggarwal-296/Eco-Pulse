@@ -1,8 +1,9 @@
 import sqlite3
+import os
 from contextlib import contextmanager
 from pathlib import Path
 
-DATABASE_PATH = Path(__file__).resolve().parents[2] / "ecopulse.db"
+DATABASE_PATH = Path(os.environ.get("ECOPULSE_DB_PATH", Path(__file__).resolve().parents[2] / "ecopulse.db"))
 
 
 @contextmanager

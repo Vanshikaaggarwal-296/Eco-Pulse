@@ -21,8 +21,8 @@ async function postJson(path, payload) {
   }
 }
 
-export function runScheduleRecommendation() {
-  return postJson('/api/optimization/schedule', {
+export function runScheduleRecommendation(payload) {
+  return postJson('/api/optimization/schedule', payload || {
     demand_kwh: [2, 3, 4.5, 3.5],
     solar_kwh: [0, 2, 1, 0],
     price_per_kwh: [4, 2, 3, 9],

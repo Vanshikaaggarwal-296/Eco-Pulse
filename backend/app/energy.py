@@ -150,30 +150,42 @@ def create_readings_batch(batch: EnergyReadingBatch):
 def get_readings(
     building_id: Annotated[str | None, Query(max_length=100)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     with get_connection() as connection:
         if building_id is None:
+            total_count = connection.execute(
+                "SELECT COUNT(*) FROM energy_readings"
+            ).fetchone()[0]
             rows = connection.execute(
                 """
                 SELECT * FROM energy_readings
                 ORDER BY timestamp DESC, id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (limit,),
+                (limit, offset),
             ).fetchall()
         else:
+            normalized_building = building_id.strip()
+            total_count = connection.execute(
+                "SELECT COUNT(*) FROM energy_readings WHERE building_id = ?",
+                (normalized_building,),
+            ).fetchone()[0]
             rows = connection.execute(
                 """
                 SELECT * FROM energy_readings
                 WHERE building_id = ?
                 ORDER BY timestamp DESC, id DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
                 """,
-                (building_id.strip(), limit),
+                (normalized_building, limit, offset),
             ).fetchall()
 
     return {
         "count": len(rows),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
         "readings": [dict(row) for row in rows],
     }
 
