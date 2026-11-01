@@ -1,4 +1,4 @@
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const apiBase = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
 export async function runForecastAnalysis(payload) {
   const controller = new AbortController()
