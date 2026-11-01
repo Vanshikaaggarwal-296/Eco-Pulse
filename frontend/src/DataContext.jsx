@@ -1,6 +1,6 @@
 import React,{createContext,useContext,useEffect,useState} from 'react'
 import {fields} from './data'
-import {getAllEnergyReadings,uploadEnergyReadings} from './energyApi'
+import {getAllEnergyReadings,getAssetTelemetry,uploadEnergyReadings} from './energyApi'
 import {getLatestForecastAnalysis} from './forecastingApi'
 
 const Context=createContext(null)
@@ -38,6 +38,7 @@ export function DataProvider({children}){
  const [backendError,setBackendError]=useState('')
  const [storageNotice,setStorageNotice]=useState('')
  const [forecastAnalysis,setForecastAnalysis]=useState(null)
+ const [assetTelemetry,setAssetTelemetry]=useState([])
 
  useEffect(()=>{
   let active=true
@@ -47,6 +48,9 @@ export function DataProvider({children}){
    .finally(()=>{if(active)setBackendLoading(false)})
   getLatestForecastAnalysis()
    .then(run=>{if(active&&run)setForecastAnalysis(run)})
+   .catch(()=>{})
+  getAssetTelemetry()
+   .then(rows=>{if(active)setAssetTelemetry(rows)})
    .catch(()=>{})
   return()=>{active=false}
  },[])
@@ -77,7 +81,7 @@ export function DataProvider({children}){
   setStorageNotice('Removed this browser copy. Backend readings remain available and are shown from the shared database.')
  }
 
- return <Context.Provider value={{dataset,apply,clear,storageNotice,backendLoading,backendError,forecastAnalysis,setForecastAnalysis}}>{children}</Context.Provider>
+ return <Context.Provider value={{dataset,apply,clear,storageNotice,backendLoading,backendError,forecastAnalysis,setForecastAnalysis,assetTelemetry}}>{children}</Context.Provider>
 }
 
 export const useData=()=>useContext(Context)

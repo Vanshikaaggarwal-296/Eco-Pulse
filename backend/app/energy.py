@@ -28,6 +28,21 @@ class EnergyReadingBatch(BaseModel):
     readings: list[EnergyReadingCreate] = Field(min_length=1, max_length=10000)
 
 
+class AssetTelemetryCreate(BaseModel):
+    timestamp: datetime
+    building_id: str = Field(min_length=1, max_length=100)
+    asset_id: str = Field(min_length=1, max_length=100)
+    asset_type: str = Field(min_length=1, max_length=50)
+    metric: str = Field(min_length=1, max_length=80)
+    value: float = Field(allow_inf_nan=False)
+    unit: str = Field(min_length=1, max_length=24)
+    source_id: str | None = Field(default=None, max_length=100)
+
+
+class AssetTelemetryBatch(BaseModel):
+    readings: list[AssetTelemetryCreate] = Field(min_length=1, max_length=10000)
+
+
 def _validate_reading(reading: EnergyReadingCreate) -> None:
     solar_and_grid = reading.solar_generation_kwh + (reading.grid_import_kwh or 0)
     if solar_and_grid > reading.consumption_kwh + 1e-6:
@@ -35,6 +50,58 @@ def _validate_reading(reading: EnergyReadingCreate) -> None:
             status_code=422,
             detail="Solar used plus grid import cannot exceed consumption.",
         )
+
+
+@router.post("/telemetry/batch", status_code=201)
+def create_asset_telemetry_batch(batch: AssetTelemetryBatch):
+    """Store normalized, timestamped device readings; no physical controls are issued."""
+    records = []
+    seen = set()
+    for reading in batch.readings:
+        if reading.timestamp.tzinfo is None or reading.timestamp.utcoffset() is None:
+            raise HTTPException(status_code=422, detail="Every telemetry timestamp must include a timezone.")
+        timestamp = reading.timestamp.astimezone(timezone.utc).isoformat()
+        asset_id = reading.asset_id.strip()
+        metric = reading.metric.strip().lower()
+        key = (timestamp, asset_id.casefold(), metric)
+        if key in seen:
+            raise HTTPException(status_code=422, detail="The batch contains duplicate timestamp/asset/metric readings.")
+        seen.add(key)
+        records.append((timestamp, reading.building_id.strip(), asset_id, reading.asset_type.strip().lower(), metric, reading.value, reading.unit.strip(), reading.source_id))
+    with get_connection() as connection:
+        try:
+            connection.executemany(
+                "INSERT INTO asset_telemetry (timestamp, building_id, asset_id, asset_type, metric, value, unit, source_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                records,
+            )
+        except Exception as error:
+            if "UNIQUE constraint failed" in str(error):
+                raise HTTPException(status_code=409, detail="A telemetry reading already exists for that timestamp, asset and metric.") from error
+            raise
+    return {"created_count": len(records), "data_mode": "device_telemetry"}
+
+
+@router.get("/telemetry")
+def get_asset_telemetry(
+    building_id: Annotated[str | None, Query(max_length=100)] = None,
+    asset_type: Annotated[str | None, Query(max_length=50)] = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 500,
+):
+    clauses = []
+    values = []
+    if building_id:
+        clauses.append("building_id = ?")
+        values.append(building_id.strip())
+    if asset_type:
+        clauses.append("asset_type = ?")
+        values.append(asset_type.strip().lower())
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    with get_connection() as connection:
+        rows = connection.execute(
+            "SELECT * FROM asset_telemetry" + where + " ORDER BY timestamp DESC, id DESC LIMIT ?",
+            (*values, limit),
+        ).fetchall()
+    return {"count": len(rows), "readings": [dict(row) for row in rows]}
 
 
 # --------------------------------------------------
