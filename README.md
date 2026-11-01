@@ -70,6 +70,9 @@ physical equipment. The AI Forecasting screen calls `POST /api/forecasting/analy
 with a dedicated hourly CSV upload and displays returned forecasts, holdout metrics
 and anomaly flags. Its optimizer recommendation is available to the Energy
 Optimization, Battery, Carbon and Smart Loads screens in the same browser session.
+Completed forecast analyses and their recommendations are saved in the shared
+SQLite database; the latest run is restored after refresh at
+`GET /api/forecasting/runs/latest`. The source CSV itself is not stored.
 Data & Imports posts normalized readings to `POST /api/energy/readings/batch`; the
 backend stores timestamp, building, consumption, solar-used value and optional
 occupancy, grid-import, cost and carbon values. Overview, Carbon, Reports, Smart

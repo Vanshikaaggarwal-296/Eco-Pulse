@@ -5,6 +5,17 @@ def initialize_database():
     with get_connection() as connection:
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS forecast_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                building_id TEXT NOT NULL,
+                source_file TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                result_json TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS energy_readings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,

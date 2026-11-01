@@ -23,3 +23,12 @@ export async function runForecastAnalysis(payload) {
     clearTimeout(timeout)
   }
 }
+
+export async function getLatestForecastAnalysis() {
+  const response = await fetch(`${apiBase}/api/forecasting/runs/latest`, {
+    headers: { Accept: 'application/json' }
+  })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(body?.detail || `Request failed (${response.status})`)
+  return body?.run || null
+}

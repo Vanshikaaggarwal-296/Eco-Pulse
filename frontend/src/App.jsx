@@ -187,7 +187,7 @@ function Forecasting() {
         step_hours:1,
         soc_steps:20
       }
-      const analysis=await runForecastAnalysis({csv_text:csvText,building_id:buildingId,timezone,horizon:forecastHorizon,control_inputs:recommendationInputs})
+      const analysis=await runForecastAnalysis({csv_text:csvText,building_id:buildingId,timezone,horizon:forecastHorizon,control_inputs:recommendationInputs,source_file:fileName})
       const integrated={...analysis,building_id:buildingId,source_file:fileName,settings:{tariff_per_kwh:tariffValue,carbon_kg_per_kwh:carbonValue,battery_capacity_kwh:capacity,battery_initial_soc_kwh:capacity*socValue/100}}
       setResult(integrated)
       setForecastAnalysis(integrated)

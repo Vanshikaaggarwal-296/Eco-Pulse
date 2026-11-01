@@ -1,6 +1,7 @@
 import React,{createContext,useContext,useEffect,useState} from 'react'
 import {fields} from './data'
 import {getAllEnergyReadings,uploadEnergyReadings} from './energyApi'
+import {getLatestForecastAnalysis} from './forecastingApi'
 
 const Context=createContext(null)
 const storageKey='ecopulse.import.v1'
@@ -44,6 +45,9 @@ export function DataProvider({children}){
    .then(rows=>{if(active&&rows.length)setBackendDataset(toDataset(rows,'Backend energy readings'))})
    .catch(error=>{if(active)setBackendError(error.message||'Could not load readings from the backend.')})
    .finally(()=>{if(active)setBackendLoading(false)})
+  getLatestForecastAnalysis()
+   .then(run=>{if(active&&run)setForecastAnalysis(run)})
+   .catch(()=>{})
   return()=>{active=false}
  },[])
 
