@@ -81,6 +81,22 @@ import workflow state; clearing it does not delete backend readings. HVAC status
 live BMS state and equipment-level critical/flexible load classes require actual
 telemetry/configuration and are shown as unavailable until connected.
 
+### Device telemetry adapter contract
+
+Send timestamped, normalized device readings in batches to
+`POST /api/energy/telemetry/batch`. A gateway can POST the same JSON after mapping
+its protocol (for example Modbus/BACnet) into this schema:
+
+```json
+{"readings":[{"timestamp":"2026-11-01T09:00:00+05:30","building_id":"Block A","asset_id":"BESS-01","asset_type":"battery","metric":"state_of_charge_pct","value":76.5,"unit":"%","source_id":"gateway-1"}]}
+```
+
+Read latest stored values from `GET /api/energy/telemetry?asset_type=battery` or
+`?asset_type=hvac`. Battery and HVAC screens display available normalized values;
+they do not send device commands. No campus gateway or physical sensor is included
+in this repository. The write API is intended for trusted local/demo use until
+authentication and network access controls are configured.
+
 ### Run the packaged app with Docker
 
 Install Docker Desktop, then run from the repository root:

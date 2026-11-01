@@ -25,6 +25,12 @@ export async function getAllEnergyReadings() {
   return rows
 }
 
+export async function getAssetTelemetry(assetType) {
+  const query = assetType ? `?asset_type=${encodeURIComponent(assetType)}&limit=1000` : '?limit=1000'
+  const body = await readJson(`${apiBase}/api/energy/telemetry${query}`)
+  return body.readings || []
+}
+
 export async function uploadEnergyReadings(rows) {
   const response = await fetch(`${apiBase}/api/energy/readings/batch`, {
     method: 'POST',

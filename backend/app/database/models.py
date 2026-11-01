@@ -16,6 +16,23 @@ def initialize_database():
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS asset_telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                building_id TEXT NOT NULL,
+                asset_id TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                metric TEXT NOT NULL,
+                value REAL NOT NULL,
+                unit TEXT NOT NULL,
+                source_id TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(timestamp, asset_id, metric)
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS energy_readings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
