@@ -5,13 +5,15 @@ export const fields = [
   ['solar_used_kwh', 'Solar energy consumed (kWh)', false],
   ['grid_import_kwh', 'Grid energy consumed (kWh)', false],
   ['cost_inr', 'Recorded energy cost (INR)', false],
-  ['carbon_kg', 'Recorded grid emissions (kg CO₂e)', false]
+  ['carbon_kg', 'Recorded grid emissions (kg CO₂e)', false],
+  ['occupancy', 'Occupancy (people)', false]
 ]
 const aliases = {
   timestamp:['timestamp','datetime','recordedat','time'], building:['building','buildingname','asset','assetname'],
   consumption_kwh:['consumptionkwh','energykwh','energyconsumedkwh','energyusekwh'],
   solar_used_kwh:['solarusedkwh','solarconsumedkwh'], grid_import_kwh:['gridimportkwh','gridconsumedkwh'],
-  cost_inr:['costinr','energycostinr','costrs'], carbon_kg:['carbonkg','emissionskg','co2kg','co2ekg']
+  cost_inr:['costinr','energycostinr','costrs'], carbon_kg:['carbonkg','emissionskg','co2kg','co2ekg'],
+  occupancy:['occupancy','occupants','people','peoplecount']
 }
 export function detectMapping(headers) {
   const clean = headers.map(x=>x.toLowerCase().replace(/[^a-z0-9]/g,''))
@@ -63,6 +65,7 @@ export function validateRows(csv,mapping) {
       else if(key==='building'){if(!value)errors.push(`Data row ${n}: building is empty.`);row[key]=value}
       else if(!value){row[key]=null;if(required)errors.push(`Data row ${n}: ${key} is missing.`)}
       else if(!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value)||!Number.isFinite(Number(value))){errors.push(`Data row ${n}: ${key} must be a non-negative number without currency signs or thousands separators.`);row[key]=null}
+      else if(key==='occupancy'&&!Number.isInteger(Number(value))){errors.push(`Data row ${n}: occupancy must be a whole number of people.`);row[key]=null}
       else row[key]=Number(value)
     })
     if(errors.length===before){

@@ -32,11 +32,11 @@ npm run preview
 - Grid outage / islanding simulation
 - Anomaly detection
 - Reports and success metrics
-- Data & Imports: CSV mapping, validation, preview and browser storage
+- Data & Imports: CSV mapping, validation, preview, backend batch import and browser storage
 
 ## Current data status
 Without an import, most dashboard pages use **illustrative sample data**. After a CSV is applied,
-Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. AI Forecasting can separately upload hourly forecasting data to the backend and display the actual response. Battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs. Applying a CSV in Data & Imports still updates browser-local Overview data and does not send that file to the backend ML endpoint.
+Overview switches to recorded totals, a consumption chart and building totals calculated from those imported records. Applying a CSV sends normalized energy readings to the backend energy API/database and keeps the complete imported dataset in this browser for Overview. AI Forecasting separately uploads hourly forecasting data to its backend endpoint. Battery, digital-twin and other dashboard metrics remain sample demonstrations; optimization and outage screens call the backend using labelled demo inputs.
 
 ## Backend integration status
 
@@ -53,8 +53,12 @@ remain illustrative until real site history is supplied.
 
 For local development, the Vite proxy forwards `/api` to
 `http://127.0.0.1:8000`. Set `ECOPULSE_API_TARGET` in `.env` to use another
-backend address. CSV imports remain validated and stored in this browser only;
-they are not uploaded to the backend or database.
+backend address. Data & Imports posts readings to `POST /api/energy/readings/batch`.
+The API stores timestamp, building, consumption, solar used (as the simplified
+backend's solar-generation field), and optional occupancy. Cost, grid-import and
+carbon values remain in the browser dataset because the energy-readings table does
+not store them. Duplicate timestamp/building readings are rejected; imports append
+to the backend and do not replace or delete existing server records.
 
 ### Run AI Forecasting
 
@@ -104,7 +108,7 @@ The Vite configuration also accepts the managed preview hostname `terminal.local
 
 Browser checks include all 12 menu destinations, expandable groups, search results/empty state, Escape closing, CSV mapping/preview/apply,
 actual imported Overview totals, reload persistence, removing browser data, and the import
-screen at 390 px phone width. `npm test` runs eight data-parsing and aggregation checks.
+screen at 390 px phone width. `npm test` runs ten data-parsing and API mapping checks.
 
 ## Use your CSV now
 
@@ -112,13 +116,15 @@ screen at 390 px phone width. `npm test` runs eight data-parsing and aggregation
 2. Click **Import CSV**, or open **Menu → Data & Imports**.
 3. Download the template for an example, then choose your own comma-separated UTF-8 CSV.
 4. Map your headers to the expected fields (common names are detected automatically).
-5. Click **Validate & preview**, inspect the rows, then **Apply to Overview**.
+5. Click **Validate & preview**, inspect the rows, then **Apply to Overview** to send
+   normalized readings to the API and switch Overview to the imported browser dataset.
 
-Limits: 5 MB / 10,000 rows per import. Each import replaces the current dataset.
-The original file is unchanged. Applied records are stored in this browser's localStorage,
-not on a server; private browsing, clearing browser data or changing device/browser removes
-or separates that copy. If browser storage is full, a visible notice reports session-only use.
-Do not treat browser storage as your permanent database.
+Limits: 5 MB / 10,000 rows per import. Each import replaces the active browser dataset,
+while backend readings are appended. The original CSV is unchanged and is not sent as a
+file. The normalized readings are stored in the backend database; the full row set used by
+Overview is stored in this browser's localStorage. Clearing browser data removes that copy,
+but does not delete backend readings. If storage is full, a visible notice reports
+session-only browser use. A duplicate server timestamp/building pair is rejected.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
@@ -136,19 +142,15 @@ unavailable rather than misleading partial totals. Duplicate timestamp/building 
 dates and malformed numeric values block applying the file. Ensure intervals do not overlap.
 The sample template is illustrative: 4 records, 430 kWh consumed, INR 2,580 recorded cost.
 
-## For the real backend
+## Backend import notes
 
-Use this flow for a shared system:
-
-`CSV upload in browser → POST /api/v1/imports → server validation → database → GET /api/v1/overview`
-
-These endpoints are a proposed integration contract, not implemented by this frontend ZIP.
-The server should enforce the same schema, reject duplicates, record upload provenance and
-return validation errors and a dataset ID. Do not trust browser-only validation. Live meter/API
-feeds can write the same database so the dashboard uses a single data source. Keep changing
-records out of application source code. The forecasting API currently trains per request
-and does not persist models; a production pipeline needs suitable historical data, model
-lifecycle, monitoring and authenticated data access.
+The batch endpoint validates the normalized energy-reading schema server-side, rejects
+duplicate timestamp/building pairs, and inserts the batch in a transaction. It does not
+store the original CSV, cost, grid-import or carbon columns, or a dataset identifier.
+Live meter/API feeds can write readings through the same energy API. Keep changing records
+out of application source code. The forecasting API currently trains per request and does
+not persist models; a production pipeline needs suitable historical data, model lifecycle,
+monitoring and authenticated data access.
 
 To run the UI locally you need Node.js and npm. A backend, suitable historical data,
 persistent storage and hosting are additional components for a shared online system.
@@ -157,4 +159,4 @@ persistent storage and hosting are additional components for a shared online sys
 
 This directory is the frontend workspace of the Eco-Pulse repository. Start the
 existing FastAPI backend from the repository root (see the root README), then
-run this workspace in another terminal. The header checks `GET /api/health` through the Vite development proxy. Optimization and outage controls call the existing backend endpoints with labelled sample profiles. Copy `.env.example` to `.env` to change the backend target. Other dashboard screens and browser-only CSV handling retain the data-mode limits described above. No server CSV import is wired yet.
+run this workspace in another terminal. The header checks `GET /api/health` through the Vite development proxy. Optimization, outage, and normalized CSV energy imports call the backend API. Copy `.env.example` to `.env` to change the backend target. Other dashboard screens retain the data-mode limits described above.
