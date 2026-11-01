@@ -10,7 +10,7 @@ export default function ApiStatus() {
       controllers.add(controller)
       const timeout=setTimeout(()=>controller.abort(),4000)
       try {
-        const base=(import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')
+        const base=(import.meta.env.VITE_API_URL||import.meta.env.VITE_API_BASE_URL||'').replace(/\/$/,'')
         const response=await fetch(`${base}/api/health`,{signal:controller.signal})
         if(!response.ok)throw new Error('Health check failed')
         const health=await response.json()
