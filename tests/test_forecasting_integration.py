@@ -29,9 +29,13 @@ def synthetic_history(days=56, seed=42):
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from app.database import db
+from app.database.models import initialize_database
 from app.forecasting import router
 
-def test_ml_feeds_existing_optimizer():
+def test_ml_feeds_existing_optimizer(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DATABASE_PATH", tmp_path / "forecast.db")
+    initialize_database()
     app=FastAPI();app.include_router(router)
     history=synthetic_history(days=35)
     history=history[history.building_id=='campus_a']
@@ -43,4 +47,7 @@ def test_ml_feeds_existing_optimizer():
         assert data['recommendation'] is not None
         assert len(data['evaluation']['predictions'])==168
         assert data['equipment_control'] is False
+        latest = client.get('/runs/latest')
+        assert latest.status_code == 200
+        assert latest.json()['run_id'] == data['run_id']
         assert client.post('/analyze',json={'csv_text':'bad','building_id':'campus_a'}).status_code==422
