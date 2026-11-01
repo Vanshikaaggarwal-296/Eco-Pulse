@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -18,7 +18,11 @@ class EnergyReadingCreate(BaseModel):
     building_id: str = Field(min_length=1, max_length=100)
     consumption_kwh: float = Field(ge=0)
     solar_generation_kwh: float = Field(ge=0)
-    occupancy: int = Field(ge=0)
+    occupancy: int | None = Field(default=None, ge=0)
+
+
+class EnergyReadingBatch(BaseModel):
+    readings: list[EnergyReadingCreate] = Field(min_length=1, max_length=10000)
 
 
 # --------------------------------------------------
@@ -55,6 +59,62 @@ def create_reading(reading: EnergyReadingCreate):
         ).fetchone()
 
         return dict(row)
+
+
+@router.post("/readings/batch", status_code=201)
+def create_readings_batch(batch: EnergyReadingBatch):
+    """Persist a validated CSV import in one database transaction."""
+    records = []
+    seen = set()
+    for reading in batch.readings:
+        if reading.timestamp.tzinfo is None or reading.timestamp.utcoffset() is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Every reading timestamp must include a timezone.",
+            )
+        timestamp = reading.timestamp.astimezone(timezone.utc).isoformat()
+        building_id = reading.building_id.strip()
+        key = (timestamp, building_id.casefold())
+        if key in seen:
+            raise HTTPException(
+                status_code=422,
+                detail="The batch contains duplicate timestamp/building readings.",
+            )
+        seen.add(key)
+        records.append((timestamp, building_id, reading))
+
+    with get_connection() as connection:
+        for timestamp, building_id, _ in records:
+            existing = connection.execute(
+                "SELECT 1 FROM energy_readings WHERE timestamp = ? AND lower(building_id) = lower(?) LIMIT 1",
+                (timestamp, building_id),
+            ).fetchone()
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"A reading already exists for {building_id} at {timestamp}.",
+                )
+
+        connection.executemany(
+            """
+            INSERT INTO energy_readings (
+                timestamp, building_id, consumption_kwh,
+                solar_generation_kwh, occupancy
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    timestamp,
+                    building_id,
+                    reading.consumption_kwh,
+                    reading.solar_generation_kwh,
+                    reading.occupancy,
+                )
+                for timestamp, building_id, reading in records
+            ],
+        )
+
+    return {"created_count": len(records), "data_mode": "historical_readings_demo"}
 
 
 # --------------------------------------------------
