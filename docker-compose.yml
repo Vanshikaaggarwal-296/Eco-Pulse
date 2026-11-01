@@ -12,6 +12,12 @@ services:
       - ecopulse-data:/data
     expose:
       - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 90s
     restart: unless-stopped
 
   frontend:
@@ -19,7 +25,8 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "${ECOPULSE_HTTP_PORT:-8080}:80"
     restart: unless-stopped
