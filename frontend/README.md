@@ -55,10 +55,9 @@ For local development, the Vite proxy forwards `/api` to
 `http://127.0.0.1:8000`. Set `ECOPULSE_API_TARGET` in `.env` to use another
 backend address. Data & Imports posts readings to `POST /api/energy/readings/batch`.
 The API stores timestamp, building, consumption, solar used (as the simplified
-backend's solar-generation field), and optional occupancy. Cost, grid-import and
-carbon values remain in the browser dataset because the energy-readings table does
-not store them. Duplicate timestamp/building readings are rejected; imports append
-to the backend and do not replace or delete existing server records.
+backend's solar-generation field), optional occupancy, grid import, cost and carbon.
+The original CSV file is not retained. Duplicate timestamp/building readings are
+rejected; imports append to the backend and do not replace or delete existing records.
 
 ### Run AI Forecasting
 
@@ -145,12 +144,12 @@ The sample template is illustrative: 4 records, 430 kWh consumed, INR 2,580 reco
 ## Backend import notes
 
 The batch endpoint validates the normalized energy-reading schema server-side, rejects
-duplicate timestamp/building pairs, and inserts the batch in a transaction. It does not
-store the original CSV, cost, grid-import or carbon columns, or a dataset identifier.
-Live meter/API feeds can write readings through the same energy API. Keep changing records
-out of application source code. The forecasting API currently trains per request and does
-not persist models; a production pipeline needs suitable historical data, model lifecycle,
-monitoring and authenticated data access.
+duplicate timestamp/building pairs, and inserts the batch in a transaction. It stores the
+readings and optional cost, grid-import, carbon and occupancy values, but not the original
+CSV or a dataset identifier. Live meter/API feeds can write readings through the same energy
+API. Keep changing records out of application source code. The forecasting API currently
+trains per request and does not persist models; a production pipeline needs suitable
+historical data, model lifecycle, monitoring and authenticated data access.
 
 To run the UI locally you need Node.js and npm. A backend, suitable historical data,
 persistent storage and hosting are additional components for a shared online system.
