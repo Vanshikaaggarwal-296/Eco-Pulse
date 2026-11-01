@@ -62,17 +62,39 @@ backend port, copy `frontend/.env.example` to `frontend/.env`, edit
 ### Data and integration status
 
 The frontend health indicator checks the backend. Energy Optimization calls
-`POST /api/optimization/schedule` with a labelled sample forecast and displays
-the returned schedule and metrics. Outage Simulation calls
+`POST /api/optimization/schedule` with a labelled sample forecast or uses the
+schedule returned from an AI Forecasting run. Outage Simulation calls
 `POST /api/optimization/outage` and displays the simulated backup estimate and
 shortfalls. Both endpoints are advisory/simulation only and never control
 physical equipment. The AI Forecasting screen calls `POST /api/forecasting/analyze`
 with a dedicated hourly CSV upload and displays returned forecasts, holdout metrics
-and anomaly flags. Data & Imports posts normalized readings to
-`POST /api/energy/readings/batch` and keeps the full uploaded dataset in browser storage
-for Overview. The backend stores timestamp, building, consumption, solar-used value and
-optional occupancy, grid-import, cost and carbon values. Clearing the browser copy does not remove backend readings. Other dashboard metrics still use
-illustrative sample values.
+and anomaly flags. Its optimizer recommendation is available to the Energy
+Optimization, Battery, Carbon and Smart Loads screens in the same browser session.
+Data & Imports posts normalized readings to `POST /api/energy/readings/batch`; the
+backend stores timestamp, building, consumption, solar-used value and optional
+occupancy, grid-import, cost and carbon values. Overview, Carbon, Reports, Smart
+Loads and Digital Twin load shared backend readings. The browser copy retains the
+import workflow state; clearing it does not delete backend readings. HVAC status,
+live BMS state and equipment-level critical/flexible load classes require actual
+telemetry/configuration and are shown as unavailable until connected.
+
+### Run the packaged app with Docker
+
+Install Docker Desktop, then run from the repository root:
+
+```powershell
+docker compose up --build
+```
+
+Open `http://localhost:8080`. The frontend container serves the production build
+and proxies `/api` to FastAPI. SQLite data is kept in the named `ecopulse-data`
+volume across restarts. To stop the app, run `docker compose down`; to also erase
+the saved database, run `docker compose down --volumes`.
+
+This is a local deployment package. Hosting it publicly still requires a hosting
+account and deployment credentials. Before exposing it to the internet, add
+authentication and access controls to write/forecast endpoints and configure a
+production database and CORS origin.
 
 To try it, open **AI Forecasting**, choose **Load synthetic demo data** or upload a
 CSV with at least 35 days of continuous hourly readings, select a building and

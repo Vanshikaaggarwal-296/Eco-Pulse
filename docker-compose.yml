@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      CORS_ORIGINS: http://localhost,http://127.0.0.1
+      DEBUG: "false"
+      APP_ENV: production
+      ECOPULSE_DB_PATH: /data/ecopulse.db
+    volumes:
+      - ecopulse-data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "${ECOPULSE_HTTP_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  ecopulse-data:

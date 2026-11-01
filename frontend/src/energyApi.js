@@ -1,5 +1,30 @@
 const apiBase = (import.meta.env?.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
+async function readJson(url) {
+  const response = await fetch(url, { headers: { Accept: 'application/json' } })
+  const body = await response.json().catch(() => null)
+  if (!response.ok) {
+    const detail = body?.detail
+    throw new Error(typeof detail === 'string' ? detail : `Request failed (${response.status})`)
+  }
+  return body
+}
+
+export async function getAllEnergyReadings() {
+  const pageSize = 500
+  const rows = []
+  let offset = 0
+  let total = Infinity
+  while (offset < total) {
+    const page = await readJson(`${apiBase}/api/energy/readings?limit=${pageSize}&offset=${offset}`)
+    rows.push(...(page.readings || []))
+    total = page.total_count ?? rows.length
+    offset += page.count || 0
+    if (!page.count) break
+  }
+  return rows
+}
+
 export async function uploadEnergyReadings(rows) {
   const response = await fetch(`${apiBase}/api/energy/readings/batch`, {
     method: 'POST',
